@@ -5,6 +5,7 @@ export interface IUser extends Document {
     email: string;
     password: string;
     role: 'client' | 'choreographer' | 'super-admin';
+    status: 'active' | 'suspended';
     gender?: string;
     dateOfBirth?: string;
     phoneNumber?: string;
@@ -18,6 +19,7 @@ export interface IUser extends Document {
         title: string;
         description?: string;
         uploadedAt: Date;
+        status: 'pending' | 'approved' | 'rejected';
     }[];
     createdAt: Date;
     updatedAt: Date;
@@ -49,6 +51,11 @@ const UserSchema = new Schema<IUser>(
             type: String,
             enum: ['client', 'choreographer', 'super-admin'],
             default: 'client',
+        },
+        status: {
+            type: String,
+            enum: ['active', 'suspended'],
+            default: 'active',
         },
         gender: {
             type: String,
@@ -86,6 +93,7 @@ const UserSchema = new Schema<IUser>(
                     title: { type: String, required: true, trim: true },
                     description: { type: String, default: '', trim: true },
                     uploadedAt: { type: Date, default: Date.now },
+                    status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
                 },
             ],
             default: [],

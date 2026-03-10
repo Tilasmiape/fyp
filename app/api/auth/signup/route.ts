@@ -11,6 +11,14 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { fullName, email, password, dateOfBirth, phoneNumber, role } = body;
 
+    // do not allow clients to register as super-admin via signup
+    if (role === 'super-admin') {
+      return NextResponse.json(
+        { error: 'Cannot create super-admin via signup' },
+        { status: 403 }
+      );
+    }
+
     if (!fullName || !email || !password || !role) {
       return NextResponse.json(
         { error: 'Missing required fields' },

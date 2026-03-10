@@ -3,11 +3,14 @@ import jwt from 'jsonwebtoken';
 import { connectDB } from '@/lib/db';
 import User from '@/models/User';
 
+// optional hard‑coded admin credentials; set via env vars or fallback to defaults
+const DEFAULT_ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@example.com';
+const DEFAULT_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-key-change-in-prod';
 
 export async function POST(request: NextRequest) {
   try {
-    await connectDB();
     const body = await request.json();
     const { email, password } = body;
 
@@ -18,6 +21,40 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // --- special case: fixed super-admin credentials (no signup required) ---
+    if (
+      email === DEFAULT_ADMIN_EMAIL &&
+      password === DEFAULT_ADMIN_PASSWORD
+    ) {
+      const token = jwt.sign(
+        { userId: 'fixed-admin', email, role: 'super-admin' },
+        JWT_SECRET,
+        { expiresIn: '24h' }
+      );
+
+      // Optionally create the admin in the database if you want
+      // await User.updateOne(
+      //   { email: email.toLowerCase() },
+      //   { email: email.toLowerCase(), role: 'super-admin', password },
+      //   { upsert: true }
+      // );
+
+      return NextResponse.json(
+        {
+          success: true,
+          user: {
+            _id: 'fixed-admin',
+            fullName: 'Administrator',
+            email,
+            role: 'super-admin',
+          },
+          token,
+        },
+        { status: 200 }
+      );
+    }
+
+    await connectDB();
     // Find user by email
     const user = await User.findOne({ email: email.toLowerCase() });
 

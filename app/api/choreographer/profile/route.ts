@@ -57,6 +57,7 @@ export async function GET(request: NextRequest) {
             title: video.title,
             description: video.description || '',
             uploadedAt: video.uploadedAt ? new Date(video.uploadedAt).toISOString() : new Date().toISOString(),
+            status: video.status,
           })),
         },
       },
@@ -103,6 +104,7 @@ export async function PUT(request: NextRequest) {
       title: String(video.title || '').trim(),
       description: String(video.description || '').trim(),
       uploadedAt: video.uploadedAt ? new Date(video.uploadedAt) : new Date(),
+      status: 'pending' as const,
     }));
 
     const hasInvalidVideo = normalizedVideos.some((video: any) => !video.url || !video.title);
@@ -143,6 +145,7 @@ export async function PUT(request: NextRequest) {
             title: video.title,
             description: video.description || '',
             uploadedAt: video.uploadedAt ? new Date(video.uploadedAt).toISOString() : new Date().toISOString(),
+            status: video.status,
           })),
         },
       },

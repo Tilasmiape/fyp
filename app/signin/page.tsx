@@ -7,7 +7,6 @@ import Link from 'next/link';
 interface SigninData {
   email: string;
   password: string;
-  role?: string;
 }
 
 export default function SigninPage() {
@@ -16,7 +15,6 @@ export default function SigninPage() {
   const [formData, setFormData] = useState<SigninData>({
     email: '',
     password: '',
-    role: 'client',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -180,45 +178,8 @@ export default function SigninPage() {
             color: 'rgba(255, 255, 255, 0.6)',
             marginBottom: '28px',
           }}>
-            Choose Your Role
+            Enter your credentials to continue
           </p>
-
-          {/* Role Selection */}
-          <div style={{
-            display: 'flex',
-            gap: '20px',
-            marginBottom: '28px',
-          }}>
-            {['client', 'choreographer'].map(role => (
-              <label key={role} style={{
-                display: 'flex',
-                alignItems: 'center',
-                cursor: 'pointer',
-                gap: '8px',
-              }}>
-                <input
-                  type="radio"
-                  name="role"
-                  value={role}
-                  checked={formData.role === role}
-                  onChange={handleChange}
-                  style={{
-                    width: '18px',
-                    height: '18px',
-                    cursor: 'pointer',
-                    accentColor: '#fbbf24',
-                  }}
-                />
-                <span style={{
-                  fontSize: '14px',
-                  color: 'rgba(255, 255, 255, 0.85)',
-                  textTransform: 'capitalize',
-                }}>
-                  {role}
-                </span>
-              </label>
-            ))}
-          </div>
 
           {/* Error Message */}
           {errors.submit && (
