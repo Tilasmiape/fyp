@@ -6,6 +6,7 @@ export interface IUser extends Document {
     password: string;
     role: 'client' | 'choreographer' | 'super-admin';
     status: 'active' | 'suspended';
+    approvalStatus?: 'pending' | 'approved' | 'rejected';
     gender?: string;
     dateOfBirth?: string;
     phoneNumber?: string;
@@ -52,11 +53,16 @@ const UserSchema = new Schema<IUser>(
             enum: ['client', 'choreographer', 'super-admin'],
             default: 'client',
         },
-        status: {
-            type: String,
-            enum: ['active', 'suspended'],
-            default: 'active',
-        },
+    status: {
+        type: String,
+        enum: ['active', 'suspended'],
+        default: 'active',
+    },
+    approvalStatus: {
+        type: String,
+        enum: ['pending', 'approved', 'rejected'],
+        default: undefined,
+    },
         gender: {
             type: String,
             enum: ['male', 'female', 'other', 'prefer_not_to_say'],

@@ -58,6 +58,7 @@ export async function POST(request: NextRequest) {
             bio,
             danceStyles: danceStyles || [],
             pricePerSession: pricePerSession || 0,
+            approvalStatus: role === 'choreographer' ? 'pending' : undefined,
         });
 
         await newUser.save();
@@ -82,7 +83,7 @@ export async function PUT(request: NextRequest) {
     try {
         await connectDB();
 
-        const { id, fullName, email, role, phoneNumber, bio, danceStyles, pricePerSession } = await request.json();
+        const { id, fullName, email, role, phoneNumber, bio, danceStyles, pricePerSession, status, approvalStatus } = await request.json();
 
         if (!id) {
             return NextResponse.json(
@@ -99,6 +100,8 @@ export async function PUT(request: NextRequest) {
         if (bio !== undefined) updateData.bio = bio;
         if (danceStyles) updateData.danceStyles = danceStyles;
         if (pricePerSession !== undefined) updateData.pricePerSession = pricePerSession;
+        if (status !== undefined) updateData.status = status;
+        if (approvalStatus !== undefined) updateData.approvalStatus = approvalStatus;
 
         const user = await User.findByIdAndUpdate(id, updateData, { new: true }).select('-password');
 

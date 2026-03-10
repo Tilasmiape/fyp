@@ -13,6 +13,7 @@ interface User {
     bio?: string;
     danceStyles?: string[];
     pricePerSession?: number;
+    status?: 'active' | 'suspended';
     createdAt: string;
 }
 
@@ -27,6 +28,7 @@ export default function UsersPage() {
     const [showAddModal, setShowAddModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
     const [formData, setFormData] = useState({
         fullName: '',
         email: '',
@@ -43,12 +45,24 @@ export default function UsersPage() {
     }, []);
 
     useEffect(() => {
+        let filtered = users;
+
+        // Apply role filter
         if (roleFilter) {
-            setFilteredUsers(users.filter(user => user.role === roleFilter));
-        } else {
-            setFilteredUsers(users);
+            filtered = filtered.filter(user => user.role === roleFilter);
         }
-    }, [users, roleFilter]);
+
+        // Apply search filter
+        if (searchTerm) {
+            const lowerSearchTerm = searchTerm.toLowerCase();
+            filtered = filtered.filter(user => 
+                user.fullName.toLowerCase().includes(lowerSearchTerm) ||
+                user.email.toLowerCase().includes(lowerSearchTerm)
+            );
+        }
+
+        setFilteredUsers(filtered);
+    }, [users, roleFilter, searchTerm]);
 
     const fetchUsers = async () => {
         try {
@@ -212,25 +226,47 @@ export default function UsersPage() {
                 </div>
 
                 {/* Role Filter */}
-                <div className="mb-6 flex space-x-2">
-                    <button
-                        onClick={() => router.push('/admin/users')}
-                        className={`px-4 py-2 rounded-lg transition ${!roleFilter ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
-                    >
-                        All Users
-                    </button>
-                    <button
-                        onClick={() => router.push('/admin/users?role=choreographer')}
-                        className={`px-4 py-2 rounded-lg transition ${roleFilter === 'choreographer' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
-                    >
-                        Choreographers
-                    </button>
-                    <button
-                        onClick={() => router.push('/admin/users?role=client')}
-                        className={`px-4 py-2 rounded-lg transition ${roleFilter === 'client' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
-                    >
-                        Clients
-                    </button>
+                <div className="mb-6 space-y-4">
+                    {/* Search Bar */}
+                    <div className="flex gap-2">
+                        <input
+                            type="text"
+                            placeholder="Search by name or email..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="flex-1 px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                        />
+                        {searchTerm && (
+                            <button
+                                onClick={() => setSearchTerm('')}
+                                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition"
+                            >
+                                Clear
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Role Filter Buttons */}
+                    <div className="flex flex-wrap gap-2">
+                        <button
+                            onClick={() => router.push('/admin/users')}
+                            className={`px-4 py-2 rounded-lg transition ${!roleFilter ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                        >
+                            All Users
+                        </button>
+                        <button
+                            onClick={() => router.push('/admin/users?role=choreographer')}
+                            className={`px-4 py-2 rounded-lg transition ${roleFilter === 'choreographer' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                        >
+                            Choreographers
+                        </button>
+                        <button
+                            onClick={() => router.push('/admin/users?role=client')}
+                            className={`px-4 py-2 rounded-lg transition ${roleFilter === 'client' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                        >
+                            Clients
+                        </button>
+                    </div>
                 </div>
 
                 {error && (
@@ -252,6 +288,7 @@ export default function UsersPage() {
                                         <th className="px-6 py-4">Full Name</th>
                                         <th className="px-6 py-4">Email</th>
                                         <th className="px-6 py-4">Role</th>
+                                        <th className="px-6 py-4">Status</th>
                                         <th className="px-6 py-4">Phone</th>
                                         <th className="px-6 py-4">Joined At</th>
                                         <th className="px-6 py-4">Actions</th>
@@ -272,6 +309,17 @@ export default function UsersPage() {
                                                         }`}
                                                 >
                                                     {user.role}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span
+                                                    className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                                                        user.status === 'active'
+                                                            ? 'bg-green-900 text-green-200'
+                                                            : 'bg-red-900 text-red-200'
+                                                    }`}
+                                                >
+                                                    {user.status || 'active'}
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4">{user.phoneNumber || '-'}</td>
