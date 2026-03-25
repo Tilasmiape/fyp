@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
     const body = await request.json();
-    const { fullName, email, password, dateOfBirth, phoneNumber, role } = body;
+    const { fullName, email, password, dateOfBirth, phoneNumber, role, location } = body;
 
     // do not allow clients to register as super-admin via signup
     if (role === 'super-admin') {
@@ -54,6 +54,7 @@ export async function POST(request: NextRequest) {
       password, // Note: Should hash password in production
       dateOfBirth,
       phoneNumber,
+      location: location ? String(location).trim() : '',
       role,
       danceStyles: role === 'choreographer' ? body.danceStyles : [],
     });

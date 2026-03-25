@@ -1,57 +1,1225 @@
 'use client';
 
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { DEFAULT_TIME_SLOTS } from '@/lib/availability';
+
+import { DateAvailability } from '@/lib/availability';
+
+interface Video {
+  id: string;
+  url: string;
+  title: string;
+  description?: string;
+  uploadedAt: string;
+}
+
+interface Choreographer {
+  id: string;
+  name: string;
+  email: string;
+  bio?: string;
+  location?: string;
+  pricePerSession: number;
+  danceStyles: string[];
+  profileImage?: string;
+  approvalStatus?: 'pending' | 'approved' | 'rejected';
+  videos: Video[];
+  availabilityTimes?: DateAvailability[];
+}
+
+interface NotificationItem {
+  id: string;
+  type: 'session-accepted' | 'session-rejected' | string;
+  title: string;
+  message: string;
+  createdAt: string;
+  read?: boolean;
+}
+
+interface ReservationItem {
+  id: string;
+  date: string;
+  time: string;
+  status: 'accepted' | 'confirmed' | 'rejected' | 'cancelled';
+  choreographer: {
+    id: string;
+    name: string;
+    profileImage?: string;
+  };
+}
 
 export default function ClientDashboard() {
   const router = useRouter();
+  const [choreographers, setChoreographers] = useState<Choreographer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [userName, setUserName] = useState('User');
+  const [userId, setUserId] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [styleFilter, setStyleFilter] = useState('');
+  const [locationFilter, setLocationFilter] = useState('');
+  const [reserveOpen, setReserveOpen] = useState(false);
+  const [reserveFor, setReserveFor] = useState<Choreographer | null>(null);
+  const [reserveDate, setReserveDate] = useState('');
+  const [reserveTime, setReserveTime] = useState('');
+  const [reserveType, setReserveType] = useState<'studio' | 'in-house'>('studio');
+  const [reserveLocation, setReserveLocation] = useState('');
+  const [reserveLoading, setReserveLoading] = useState(false);
+  const [reserveError, setReserveError] = useState('');
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState('');
+  const [reservedTimes, setReservedTimes] = useState<string[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationsError, setNotificationsError] = useState('');
+  const [reminderNotifications, setReminderNotifications] = useState<NotificationItem[]>([]);
+  const [showNotificationPopup, setShowNotificationPopup] = useState(false);
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<'collective' | 'favorites'>('collective');
+  const reservedSet = useMemo(() => new Set(reservedTimes), [reservedTimes]);
+  const timeSlots = useMemo(() => {
+    if (!reserveFor || !reserveDate) return [];
+    if (reserveFor.availabilityTimes && reserveFor.availabilityTimes.length > 0) {
+      const entry = reserveFor.availabilityTimes.find(a => a.date === reserveDate);
+      return entry ? entry.timeSlots : [];
+    }
+    return DEFAULT_TIME_SLOTS;
+  }, [reserveFor, reserveDate]);
+  const combinedNotifications = useMemo(() => {
+    const all = [...reminderNotifications, ...notifications];
+    const seen = new Set<string>();
+    return all.filter(n => {
+      if (seen.has(n.id)) return false;
+      seen.add(n.id);
+      return true;
+    });
+  }, [reminderNotifications, notifications]);
+  const unreadCount = useMemo(
+    () => notifications.filter(n => !n.read).length,
+    [notifications]
+  );
+
+  const parseSessionDateTime = (dateStr: string, timeStr: string) => {
+    if (!dateStr || !timeStr) return null;
+    const parts = dateStr.split('-').map(Number);
+    if (parts.length !== 3 || parts.some(n => Number.isNaN(n))) return null;
+    const [year, month, day] = parts;
+
+    const timeParts = timeStr.trim().split(' ');
+    if (timeParts.length < 2) return null;
+    const [clock, meridiemRaw] = timeParts;
+    const meridiem = meridiemRaw.toUpperCase();
+    const [hh, mm] = clock.split(':').map(Number);
+    if ([hh, mm].some(n => Number.isNaN(n))) return null;
+
+    let hours = hh % 12;
+    if (meridiem === 'PM') hours += 12;
+    return new Date(year, month - 1, day, hours, mm, 0, 0);
+  };
+  const splitReason = (message: string) => {
+    const marker = 'Reason:';
+    const idx = message.indexOf(marker);
+    if (idx === -1) return { base: message, reason: '' };
+    const base = message.slice(0, idx).trim();
+    const reason = message.slice(idx + marker.length).trim();
+    return { base, reason };
+  };
+
+  const uniqueLocations = useMemo(() => {
+    const items = choreographers
+      .map(c => (c.location || '').trim())
+      .filter(Boolean);
+    return Array.from(new Set(items)).sort((a, b) => a.localeCompare(b));
+  }, [choreographers]);
+
+  const uniqueStyles = useMemo(() => {
+    const items = choreographers.flatMap(c => c.danceStyles || []).map(s => s.trim()).filter(Boolean);
+    return Array.from(new Set(items)).sort((a, b) => a.localeCompare(b));
+  }, [choreographers]);
 
   const handleLogout = () => {
-    // Clear auth cookie (client-side)
     document.cookie = 'authToken=; path=/; max-age=0';
     router.push('/signin');
   };
 
+  const openReserve = (c: Choreographer) => {
+    setReserveFor(c);
+    setReserveDate('');
+    setReserveTime('');
+    setReserveType('studio');
+    setReserveLocation('');
+    setReserveError('');
+    setAvailabilityError('');
+    setReservedTimes([]);
+    setReserveOpen(true);
+  };
+
+  const submitReservation = async () => {
+    if (!reserveFor) return;
+    if (!reserveDate) { setReserveError('Please select a date.'); return; }
+    if (!reserveTime) { setReserveError('Please select a time.'); return; }
+    if (reservedSet.has(reserveTime)) { setReserveError('Selected time is no longer available.'); return; }
+    if (reserveType === 'in-house' && !reserveLocation.trim()) {
+      setReserveError('Please add your location for in-house sessions.');
+      return;
+    }
+    setReserveLoading(true);
+    setReserveError('');
+    try {
+      const res = await fetch('/api/reservations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          choreographerId: reserveFor.id,
+          date: reserveDate,
+          time: reserveTime,
+          sessionType: reserveType,
+          location: reserveType === 'in-house' ? reserveLocation.trim() : '',
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to reserve');
+      }
+      setReserveOpen(false);
+    } catch (err: any) {
+      setReserveError(err.message || 'Failed to reserve');
+    } finally {
+      setReserveLoading(false);
+    }
+  };
+
+  const fetchChoreographers = async (searchValue = '', styleValue = '', locationValue = '') => {
+    try {
+      setLoading(true);
+      setError('');
+      const params = new URLSearchParams();
+      if (searchValue.trim()) params.set('search', searchValue.trim());
+      if (styleValue.trim()) params.set('style', styleValue.trim());
+      if (locationValue.trim()) params.set('location', locationValue.trim());
+      const qs = params.toString();
+      const res = await fetch(qs ? `/api/choreographers?${qs}` : '/api/choreographers');
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to load choreographers');
+      }
+      setChoreographers(Array.isArray(data?.choreographers) ? data.choreographers : []);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load choreographers');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchChoreographers();
+  }, []);
+
+  useEffect(() => {
+    const loadUser = async () => {
+      try {
+        const res = await fetch('/api/auth/me');
+        const data = await res.json();
+        if (res.ok && data?.success && data?.user?.fullName) {
+          setUserName(data.user.fullName);
+          setUserId(data.user.id || '');
+        }
+      } catch {
+        // keep fallback name
+      }
+    };
+    loadUser();
+  }, []);
+
+  useEffect(() => {
+    const loadNotifications = async () => {
+      try {
+        if (!userId) return;
+        setNotificationsError('');
+        const res = await fetch('/api/notifications');
+        const data = await res.json();
+        if (!res.ok || !data?.success) throw new Error(data?.error || 'Failed to load notifications');
+        const items = Array.isArray(data?.notifications) ? data.notifications : [];
+        setNotifications(items);
+      } catch (err: any) {
+        setNotificationsError(err.message || 'Failed to load notifications');
+      }
+    };
+    loadNotifications();
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+    if (unreadCount === 0 && reminderNotifications.length === 0) return;
+    const key = `clientNotificationsPopupShown:${userId}`;
+    const alreadyShown = sessionStorage.getItem(key);
+    if (!alreadyShown) {
+      setShowNotificationPopup(true);
+      sessionStorage.setItem(key, '1');
+    }
+  }, [userId, unreadCount, reminderNotifications.length]);
+
+  useEffect(() => {
+    const loadReminders = async () => {
+      try {
+        if (!userId) return;
+        const res = await fetch('/api/reservations');
+        const data = await res.json();
+        if (!res.ok || !data?.success) return;
+        const items: ReservationItem[] = Array.isArray(data?.reservations) ? data.reservations : [];
+        const now = new Date();
+        const cutoff = 24 * 60 * 60 * 1000;
+
+        const reminders = items
+          .map(r => {
+            const sessionTime = parseSessionDateTime(r.date, r.time);
+            if (!sessionTime) return null;
+            const diff = sessionTime.getTime() - now.getTime();
+            if (diff <= 0 || diff > cutoff) return null;
+            const hours = Math.max(1, Math.ceil(diff / (60 * 60 * 1000)));
+            return {
+              id: `reminder-${r.id}`,
+              type: 'session-reminder',
+              title: 'Session Reminder',
+              message: `You have a session with ${r.choreographer?.name || 'your choreographer'} in about ${hours} hour${hours === 1 ? '' : 's'} (${r.date} at ${r.time}).`,
+              createdAt: now.toISOString(),
+            } as NotificationItem;
+          })
+          .filter(Boolean) as NotificationItem[];
+
+        setReminderNotifications(reminders);
+      } catch {
+        setReminderNotifications([]);
+      }
+    };
+    loadReminders();
+  }, [userId]);
+
+
+  useEffect(() => {
+    const key = `favorites:${userId || 'guest'}`;
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const ids = JSON.parse(raw);
+      if (Array.isArray(ids)) {
+        setFavorites(new Set(ids.map(String)));
+      }
+    } catch {
+      // ignore invalid storage
+    }
+  }, [userId]);
+
+  const toggleFavorite = (id: string) => {
+    const key = `favorites:${userId || 'guest'}`;
+    setFavorites(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      localStorage.setItem(key, JSON.stringify(Array.from(next)));
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      fetchChoreographers(searchTerm, styleFilter, locationFilter);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchTerm, styleFilter, locationFilter]);
+
+  useEffect(() => {
+    const loadAvailability = async () => {
+      if (!reserveOpen || !reserveFor || !reserveDate) {
+        setReservedTimes([]);
+        setAvailabilityError('');
+        setAvailabilityLoading(false);
+        return;
+      }
+      setAvailabilityLoading(true);
+      setAvailabilityError('');
+      try {
+        const params = new URLSearchParams({
+          choreographerId: reserveFor.id,
+          date: reserveDate,
+        });
+        const res = await fetch(`/api/reservations?${params.toString()}`);
+        const data = await res.json();
+        if (!res.ok || !data?.success) {
+          throw new Error(data?.error || 'Failed to check availability');
+        }
+        const times = Array.isArray(data?.reservedTimes) ? data.reservedTimes.map(String) : [];
+        setReservedTimes(times);
+        if (times.includes(reserveTime)) {
+          setReserveTime('');
+          setReserveError('Selected time is no longer available.');
+        }
+      } catch (err: any) {
+        setAvailabilityError(err.message || 'Failed to check availability');
+      } finally {
+        setAvailabilityLoading(false);
+      }
+    };
+    loadAvailability();
+  }, [reserveOpen, reserveFor?.id, reserveDate]);
+
+  const filtered = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    const style = styleFilter.trim().toLowerCase();
+    const location = locationFilter.trim().toLowerCase();
+    return choreographers.filter(c => {
+      const matchesName = !term || c.name.toLowerCase().includes(term);
+      const matchesStyle = !style || c.danceStyles.some(s => s.toLowerCase().includes(style));
+      const matchesLocation = !location || (c.location || '').toLowerCase().includes(location);
+      const matchesView = viewMode !== 'favorites' || favorites.has(c.id);
+      return matchesName && matchesStyle && matchesLocation && matchesView;
+    });
+  }, [choreographers, searchTerm, styleFilter, locationFilter, viewMode, favorites]);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-white rounded-xl shadow-lg p-8">
-          <h1 className="text-4xl font-bold text-gray-800 mb-2">
-            Welcome, Client! 👨‍🎓
-          </h1>
-          <p className="text-gray-600 mb-8">
-            Find and book the perfect choreographer for your event.
-          </p>
+    <div className="client-root">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Manrope:wght@300;400;500;600;700&display=swap');
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
-              <h3 className="text-xl font-semibold text-blue-900 mb-2">Browse Choreographers</h3>
-              <p className="text-blue-700">Find talented choreographers by dance style and location.</p>
+        :root {
+          --bg: #f6f7fb;
+          --ink: #101114;
+          --muted: #6b7280;
+          --line: #e7e9f0;
+          --pill: #f1f2f7;
+          --accent: #f4b63a;
+          --navy: #111827;
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; }
+        .client-root {
+          min-height: 100vh;
+          background: var(--bg);
+          color: var(--ink);
+          font-family: 'Manrope', sans-serif;
+        }
+        .topbar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 18px 40px;
+          border-bottom: 1px solid var(--line);
+          background: #fff;
+          position: sticky;
+          top: 0;
+          z-index: 5;
+        }
+        .brand {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .brand-badge {
+          width: 48px;
+          height: 48px;
+          border-radius: 999px;
+          background: #fff;
+          box-shadow: 0 8px 18px rgba(0,0,0,0.18);
+          overflow: hidden;
+          display: grid;
+          place-items: center;
+        }
+        .brand-badge img { width: 100%; height: 100%; object-fit: cover; transform: scale(1.6); }
+        .brand-name {
+          font-weight: 700;
+          letter-spacing: 0.4px;
+        }
+        .brand-sub {
+          font-size: 10px;
+          color: var(--accent);
+          letter-spacing: 2px;
+          text-transform: uppercase;
+          margin-top: 2px;
+        }
+        .topbar-actions {
+          display: flex;
+          align-items: center;
+          gap: 20px;
+        }
+        .nav-links {
+          display: flex;
+          gap: 18px;
+          font-size: 12px;
+          letter-spacing: 1px;
+          text-transform: uppercase;
+          color: #6b7280;
+          font-weight: 600;
+        }
+        .user-pill {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 6px 10px;
+          border: 1px solid var(--line);
+          border-radius: 999px;
+          background: #fff;
+          font-size: 12px;
+          font-weight: 600;
+        }
+        .user-role {
+          color: var(--accent);
+          text-transform: uppercase;
+          font-size: 9px;
+          letter-spacing: 1.2px;
+          margin-left: 6px;
+        }
+        .logout-btn {
+          border: none;
+          background: #f1f2f7;
+          color: #111827;
+          font-weight: 600;
+          padding: 8px 12px;
+          border-radius: 8px;
+          cursor: pointer;
+        }
+        .page {
+          max-width: 1400px;
+          margin: 0 auto;
+          padding: 32px 36px 60px;
+        }
+        .portal-label {
+          font-size: 10px;
+          letter-spacing: 3px;
+          color: var(--accent);
+          text-transform: uppercase;
+          font-weight: 700;
+          margin-bottom: 8px;
+        }
+        .hero {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          margin-bottom: 22px;
+        }
+        .hero h1 {
+          font-family: 'Playfair Display', serif;
+          font-size: 34px;
+          margin: 0;
+        }
+        .segmented {
+          display: flex;
+          gap: 6px;
+          padding: 6px;
+          background: #fff;
+          border: 1px solid var(--line);
+          border-radius: 999px;
+          font-size: 11px;
+          letter-spacing: 1px;
+          text-transform: uppercase;
+        }
+        .segmented button {
+          border: none;
+          background: transparent;
+          padding: 7px 12px;
+          border-radius: 999px;
+          font-weight: 700;
+          color: #6b7280;
+          cursor: pointer;
+        }
+        .segmented button.active {
+          background: var(--pill);
+          color: #111827;
+        }
+        .notif-badge {
+          margin-left: 8px;
+          background: #111827;
+          color: #fff;
+          border-radius: 999px;
+          padding: 2px 6px;
+          font-size: 9px;
+          font-weight: 800;
+          letter-spacing: 0.6px;
+        }
+        .filters {
+          background: #fff;
+          border: 1px solid var(--line);
+          border-radius: 18px;
+          padding: 18px;
+          box-shadow: 0 10px 30px rgba(17, 24, 39, 0.06);
+          margin-bottom: 24px;
+        }
+        .filter-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 16px;
+        }
+        .filter-label {
+          font-size: 10px;
+          letter-spacing: 2px;
+          text-transform: uppercase;
+          color: #9ca3af;
+          font-weight: 700;
+          margin-bottom: 6px;
+          display: block;
+        }
+        .input, .select {
+          width: 100%;
+          padding: 10px 12px;
+          border-radius: 12px;
+          border: 1px solid var(--line);
+          background: #fafbff;
+          font-size: 13px;
+          outline: none;
+        }
+        .cards {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 28px;
+        }
+        @media (max-width: 1400px) {
+          .cards { grid-template-columns: repeat(3, 1fr); }
+        }
+        @media (max-width: 1024px) {
+          .cards { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 640px) {
+          .cards { grid-template-columns: 1fr; }
+        }
+        .card {
+          background: #fff;
+          border: 1px solid var(--line);
+          border-radius: 30px;
+          overflow: hidden;
+          box-shadow: 0 18px 40px rgba(17, 24, 39, 0.15);
+          transition: all 0.3s ease;
+        }
+        .card:hover {
+          transform: translateY(-4px);
+          box-shadow: 0 24px 56px rgba(17, 24, 39, 0.22);
+        }
+        .card-media {
+          position: relative;
+          height: 280px;
+          background: linear-gradient(180deg, #1f2937 0%, #0f172a 100%);
+        }
+        .card-media img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+        }
+        .card-badge {
+          position: absolute;
+          top: 10px;
+          left: 18px;
+          background: #f59e0b;
+          color: #111827;
+          font-size: 9px;
+          font-weight: 800;
+          padding: 5px 6px;
+          border-radius: 999px;
+          width: 22px;
+          height: 22px;
+          display: grid;
+          place-items: center;
+        }
+        .card-rating {
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          background: rgba(17,24,39,0.8);
+          color: #fff;
+          font-size: 9px;
+          font-weight: 700;
+          padding: 3px 8px;
+          border-radius: 999px;
+          letter-spacing: 0.5px;
+        }
+        .card-fav {
+          position: absolute;
+          left: 10px;
+          top: 44px;
+          width: 24px;
+          height: 24px;
+          border-radius: 999px;
+          background: rgba(17,24,39,0.6);
+          border: 1px solid rgba(255,255,255,0.35);
+          color: #fff;
+          display: grid;
+          place-items: center;
+          font-size: 17px;
+          cursor: pointer;
+          transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease;
+          user-select: none;
+        }
+        .card-fav.active {
+          background: #fff;
+          color: #e11d48;
+          border-color: #fff;
+          transform: scale(1.08);
+        }
+        .card-overlay {
+          position: absolute;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          padding: 14px 14px 12px;
+          background: linear-gradient(180deg, rgba(15,23,42,0) 0%, rgba(15,23,42,0.9) 100%);
+          color: #fff;
+        }
+        .card-overlay .overlay-loc {
+          font-size: 8px;
+          letter-spacing: 1.8px;
+          text-transform: uppercase;
+          color: rgba(255,255,255,0.75);
+          font-weight: 800;
+        }
+        .card-overlay .overlay-name {
+          font-family: 'Playfair Display', serif;
+          font-size: 18px;
+          margin-top: 3px;
+        }
+        .card-body {
+          padding: 14px 14px 18px;
+        }
+        .card-bio {
+          font-size: 10.5px;
+          color: #6b7280;
+          line-height: 1.6;
+          font-style: italic;
+          min-height: 42px;
+          display: -webkit-box;
+          -webkit-line-clamp: 3;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+        .tag-row {
+          display: flex;
+          gap: 5px;
+          flex-wrap: wrap;
+          margin: 10px 0 12px;
+        }
+        .tag {
+          font-size: 7.5px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.8px;
+          padding: 3px 7px;
+          border-radius: 999px;
+          background: #f7f7fb;
+          color: #6b7280;
+        }
+        .price-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          margin-bottom: 14px;
+        }
+        .price {
+          font-weight: 800;
+          font-size: 14px;
+        }
+        .price small {
+          display: block;
+          font-size: 8px;
+          letter-spacing: 0.8px;
+          text-transform: uppercase;
+          color: #9ca3af;
+        }
+        .actions {
+          display: flex;
+          gap: 8px;
+        }
+        .btn {
+          flex: 1;
+          padding: 8px 10px;
+          border-radius: 999px;
+          border: 1px solid #e6e8ef;
+          background: #fff;
+          font-size: 9px;
+          font-weight: 800;
+          letter-spacing: 0.8px;
+          text-transform: uppercase;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .btn:hover {
+          background: #fafbff;
+        }
+        .btn.primary {
+          background: var(--navy);
+          color: #fff;
+          border-color: var(--navy);
+        }
+        .modal {
+          position: fixed;
+          inset: 0;
+          background: rgba(15,23,42,0.7);
+          display: grid;
+          place-items: center;
+          min-height: 100vh;
+          z-index: 50;
+          padding: 20px;
+        }
+        .modal-card {
+          width: min(420px, 92vw);
+          background: #fff;
+          border-radius: 28px;
+          padding: 24px;
+          box-shadow: 0 30px 70px rgba(0,0,0,0.35);
+          position: relative;
+          margin: 0 auto;
+        }
+        .modal-close {
+          position: absolute;
+          top: 14px;
+          right: 14px;
+          width: 32px;
+          height: 32px;
+          border-radius: 999px;
+          border: 1px solid #e7e9f0;
+          background: #f8fafc;
+          cursor: pointer;
+        }
+        .modal-title {
+          font-family: 'Playfair Display', serif;
+          font-size: 22px;
+          margin: 0 0 4px;
+        }
+        .modal-sub {
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: 2px;
+          color: #f4b63a;
+          font-weight: 700;
+        }
+        .modal-field { margin-top: 18px; }
+        .modal-label {
+          font-size: 10px;
+          letter-spacing: 2px;
+          text-transform: uppercase;
+          color: #9ca3af;
+          font-weight: 700;
+          margin-bottom: 8px;
+          display: block;
+        }
+        .time-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .time-btn {
+          border: 1px solid #edf1f7;
+          background: #f8fafc;
+          padding: 10px 0;
+          border-radius: 14px;
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+          color: #64748b;
+        }
+        .time-btn.active { background: #111827; color: #fff; border-color: #111827; }
+        .time-btn.disabled,
+        .time-btn:disabled {
+          background: #eef2f7;
+          color: #a1a1aa;
+          border-color: #e5e7eb;
+          cursor: not-allowed;
+        }
+        .helper-text { font-size: 11px; color: #64748b; margin-top: 6px; }
+        .summary {
+          margin-top: 18px;
+          padding: 16px;
+          border-radius: 18px;
+          background: #0b1220;
+          color: #fff;
+        }
+        .summary-row { display: flex; justify-content: space-between; font-size: 11px; color: rgba(255,255,255,0.7); }
+        .summary-total { font-size: 20px; font-weight: 800; margin-top: 6px; }
+        .error-text { color: #b91c1c; font-size: 12px; margin-top: 10px; }
+        .btn.primary:hover {
+          background: #1f2937;
+        }
+        .state {
+          text-align: center;
+          color: #6b7280;
+          padding: 40px 0;
+          background: #fff;
+          border: 1px solid var(--line);
+          border-radius: 16px;
+        }
+        .notif-popup {
+          position: fixed;
+          right: 24px;
+          bottom: 24px;
+          width: min(360px, 92vw);
+          background: #0b1220;
+          color: #fff;
+          border-radius: 18px;
+          padding: 16px;
+          box-shadow: 0 20px 60px rgba(15,23,42,0.4);
+          z-index: 60;
+        }
+        .notif-title {
+          font-weight: 800;
+          font-size: 14px;
+          letter-spacing: 0.6px;
+        }
+        .notif-sub {
+          font-size: 11px;
+          color: rgba(255,255,255,0.6);
+          margin: 6px 0 10px;
+        }
+        .notif-item {
+          border-top: 1px solid rgba(255,255,255,0.08);
+          padding-top: 10px;
+          margin-top: 10px;
+        }
+        .notif-item:first-of-type {
+          border-top: none;
+          padding-top: 0;
+          margin-top: 0;
+        }
+        .notif-item-title {
+          font-size: 12px;
+          font-weight: 700;
+        }
+        .notif-item-message {
+          font-size: 12px;
+          color: rgba(255,255,255,0.7);
+          margin-top: 4px;
+        }
+        .notif-actions {
+          display: flex;
+          gap: 10px;
+          margin-top: 12px;
+        }
+        .notif-btn {
+          flex: 1;
+          border: none;
+          border-radius: 999px;
+          padding: 8px 12px;
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.8px;
+          text-transform: uppercase;
+          cursor: pointer;
+        }
+        .notif-btn.primary {
+          background: var(--accent);
+          color: #111827;
+        }
+        .notif-btn.ghost {
+          background: rgba(255,255,255,0.1);
+          color: #fff;
+        }
+        @media (max-width: 760px) {
+          .topbar { padding: 14px 18px; }
+          .nav-links { display: none; }
+          .page { padding: 24px 18px 50px; }
+          .hero { flex-direction: column; align-items: flex-start; }
+          .segmented { flex-wrap: wrap; }
+        }
+      `}</style>
+
+      <nav className="topbar">
+        <div className="brand">
+          <div className="brand-badge">
+            <img src="/images/logo.png" alt="Logo" />
+          </div>
+          <div>
+            <div className="brand-name">Step Out</div>
+            <div className="brand-sub">Studio Hub</div>
+          </div>
+        </div>
+        <div className="topbar-actions">
+          <div className="nav-links">
+            <span>Home</span>
+            <span>Dashboard</span>
+          </div>
+          <div className="user-pill">
+            <span>Hi, {userName}</span>
+            <span className="user-role">Client</span>
+          </div>
+          <button className="logout-btn" onClick={handleLogout}>Logout</button>
+        </div>
+      </nav>
+
+      <div className="page">
+        <div className="portal-label">Member Portal</div>
+        <div className="hero">
+          <h1>Namaste, {userName}</h1>
+          <div className="segmented">
+            <button className="active" onClick={() => router.push('/client/home')}>Collective</button>
+            <button onClick={() => router.push('/client/sessions')}>Sessions</button>
+            <button>Favorites</button>
+            <button onClick={() => router.push('/client/notifications')}>
+              Notifications
+              {unreadCount > 0 && <span className="notif-badge">{unreadCount}</span>}
+            </button>
+            <button>Profile</button>
+          </div>
+        </div>
+
+        <div className="filters">
+          <div className="filter-grid">
+            <div>
+              <label className="filter-label">Genre</label>
+              <select
+                className="select"
+                value={styleFilter}
+                onChange={e => setStyleFilter(e.target.value)}
+              >
+                <option value="">All Disciplines</option>
+                {uniqueStyles.map(style => (
+                  <option key={style} value={style}>{style}</option>
+                ))}
+              </select>
             </div>
-
-            <div className="bg-green-50 p-6 rounded-lg border border-green-200">
-              <h3 className="text-xl font-semibold text-green-900 mb-2">Book Sessions</h3>
-              <p className="text-green-700">Check availability and book your choreography lessons.</p>
+            <div>
+              <label className="filter-label">Location</label>
+              <select
+                className="select"
+                value={locationFilter}
+                onChange={e => setLocationFilter(e.target.value)}
+              >
+                <option value="">Across Nepal</option>
+                {uniqueLocations.map(loc => (
+                  <option key={loc} value={loc}>{loc}</option>
+                ))}
+              </select>
             </div>
-
-            <div className="bg-purple-50 p-6 rounded-lg border border-purple-200">
-              <h3 className="text-xl font-semibold text-purple-900 mb-2">View Bookings</h3>
-              <p className="text-purple-700">Manage and track all your upcoming sessions.</p>
-            </div>
-
-            <div className="bg-orange-50 p-6 rounded-lg border border-orange-200">
-              <h3 className="text-xl font-semibold text-orange-900 mb-2">Leave Reviews</h3>
-              <p className="text-orange-700">Rate and review choreographers after your sessions.</p>
+            <div>
+              <label className="filter-label">Search Artists</label>
+              <input
+                className="input"
+                type="text"
+                placeholder="Artist name, style or studio..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+              />
             </div>
           </div>
-
-          <button
-            onClick={handleLogout}
-            className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-6 rounded-lg transition"
-          >
-            Logout
-          </button>
         </div>
+
+        {error && <div className="state">{error}</div>}
+
+        {loading ? (
+          <div className="state">Loading choreographers...</div>
+        ) : filtered.length === 0 ? (
+          <div className="state">No choreographers match your filters.</div>
+        ) : (
+          <div className="cards">
+            {filtered.map(c => {
+              const styles = (c.danceStyles || []).slice(0, 2);
+              return (
+                <div key={c.id} className="card">
+                  <div className="card-media">
+                    {c.profileImage && <img src={c.profileImage} alt={c.name} />}
+                    <div className="card-badge">Top</div>
+                    <div className="card-rating">4.8 Elite</div>
+                    <div
+                      className={`card-fav ${favorites.has(c.id) ? 'active' : ''}`}
+                      onClick={() => toggleFavorite(c.id)}
+                      role="button"
+                      aria-pressed={favorites.has(c.id)}
+                      title={favorites.has(c.id) ? 'Remove from favorites' : 'Add to favorites'}
+                    >
+                      {favorites.has(c.id) ? '♥' : '♡'}
+                    </div>
+                    <div className="card-overlay">
+                      <div className="overlay-loc">{(c.location || 'Nepal').toUpperCase()}</div>
+                      <div className="overlay-name">{c.name}</div>
+                    </div>
+                  </div>
+                  <div className="card-body">
+                    <div className="card-bio">{c.bio || 'Specialist in diverse dance forms and modern choreography.'}</div>
+                    <div className="tag-row">
+                      {styles.map(s => (
+                        <span key={s} className="tag">{s}</span>
+                      ))}
+                    </div>
+                    <div className="price-row">
+                      <div className="price">
+                        NPR {c.pricePerSession.toLocaleString()}
+                        <small>Per Session</small>
+                      </div>
+                    </div>
+                    <div className="actions">
+                      <button className="btn" onClick={() => router.push(`/choreographer/${c.id}`)}>View Profile</button>
+                      <button className="btn primary" onClick={() => openReserve(c)}>Reserve</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
+
+      {reserveOpen && reserveFor && (
+        <div className="modal" onClick={() => setReserveOpen(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setReserveOpen(false)}>X</button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+              <div style={{ width: '44px', height: '44px', borderRadius: '12px', overflow: 'hidden', background: '#0f172a' }}>
+                {reserveFor.profileImage && (
+                  <img src={reserveFor.profileImage} alt={reserveFor.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                )}
+              </div>
+              <div>
+                <div className="modal-title">{reserveFor.name}</div>
+                <div className="modal-sub">Artist Reservation</div>
+              </div>
+            </div>
+
+            <div className="modal-field">
+              <label className="modal-label">1. Session Date</label>
+              {reserveFor.availabilityTimes && reserveFor.availabilityTimes.length > 0 ? (
+                <select
+                  className="input"
+                  value={reserveDate}
+                  onChange={(e) => {
+                    setReserveDate(e.target.value);
+                    setReserveTime('');
+                    setReserveError('');
+                    setAvailabilityError('');
+                  }}
+                >
+                  <option value="">Select a date</option>
+                  {reserveFor.availabilityTimes
+                    .filter(dateEntry => new Date(dateEntry.date) >= new Date(new Date().setHours(0,0,0,0)))
+                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                    .map(dateEntry => (
+                      <option key={dateEntry.date} value={dateEntry.date}>
+                        {new Date(dateEntry.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                        {' '}({dateEntry.timeSlots.length} slots)
+                      </option>
+                    ))}
+                </select>
+              ) : (
+                <div style={{ padding: '12px', backgroundColor: '#fee2e2', borderRadius: '8px', color: '#b91c1c', fontSize: '13px' }}>
+                  No available dates. The choreographer hasn't set their availability yet.
+                </div>
+              )}
+            </div>
+
+            <div className="modal-field">
+              <label className="modal-label">2. Artist Availability</label>
+              {availabilityLoading && <div className="helper-text">Checking availability...</div>}
+              {availabilityError && <div className="error-text">{availabilityError}</div>}
+              {!reserveDate ? (
+                <div className="helper-text">Please select a date first.</div>
+              ) : timeSlots.length === 0 ? (
+                <div className="helper-text">No available slots for this date.</div>
+              ) : (
+                <div className="time-grid">
+                  {timeSlots.map(slot => {
+                    const t = slot.time;
+                    const duration = slot.duration;
+                    const isReserved = reservedSet.has(t);
+                    return (
+                      <button
+                        key={`${t}-${duration}`}
+                        className={`time-btn ${reserveTime === t ? 'active' : ''} ${isReserved ? 'disabled' : ''}`}
+                        onClick={() => setReserveTime(t)}
+                        disabled={isReserved}
+                        title={isReserved ? 'Already booked' : 'Select time'}
+                      >
+                        {t}
+                        <div style={{ fontSize: '10px', opacity: 0.7, marginTop: '2px', fontWeight: 'normal' }}>
+                          {duration} min
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="modal-field">
+              <label className="modal-label">3. Session Type</label>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button className={`time-btn ${reserveType === 'studio' ? 'active' : ''}`} onClick={() => setReserveType('studio')}>Studio</button>
+                <button className={`time-btn ${reserveType === 'in-house' ? 'active' : ''}`} onClick={() => setReserveType('in-house')}>In-House</button>
+              </div>
+              {reserveType === 'in-house' && (
+                <input
+                  className="input"
+                  style={{ marginTop: '10px' }}
+                  type="text"
+                  placeholder="Enter your location"
+                  value={reserveLocation}
+                  onChange={(e) => setReserveLocation(e.target.value)}
+                />
+              )}
+            </div>
+
+            <div className="summary">
+              <div className="summary-row">
+                <span>Private Session</span>
+                <span>NPR {reserveFor.pricePerSession.toLocaleString()}</span>
+              </div>
+              <div className="summary-row" style={{ marginTop: '6px' }}>
+                <span>Studio Access Fee</span>
+                <span>NPR 50</span>
+              </div>
+              <div className="summary-total">NPR {(reserveFor.pricePerSession + 50).toLocaleString()}</div>
+            </div>
+
+            {reserveError && <div className="error-text">{reserveError}</div>}
+
+            <button
+              className="btn primary"
+              style={{ width: '100%', marginTop: '16px' }}
+              onClick={submitReservation}
+              disabled={reserveLoading}
+            >
+              {reserveLoading ? 'Reserving...' : 'Finalize Reservation'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showNotificationPopup && combinedNotifications.length > 0 && (
+        <div className="notif-popup" role="status" aria-live="polite">
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+            <div>
+              <div className="notif-title">Session Notifications</div>
+              <div className="notif-sub">
+                {unreadCount > 0
+                  ? `You have ${unreadCount} unread update${unreadCount === 1 ? '' : 's'}.`
+                  : 'You have session reminders.'}
+              </div>
+            </div>
+            <button
+              className="notif-btn ghost"
+              style={{ flex: '0 0 auto', padding: '6px 10px' }}
+              onClick={() => setShowNotificationPopup(false)}
+              aria-label="Dismiss notifications"
+            >
+              Dismiss
+            </button>
+          </div>
+          {combinedNotifications.slice(0, 3).map(n => {
+            const { base, reason } = splitReason(n.message || '');
+            return (
+            <div key={n.id} className="notif-item">
+              <div className="notif-item-title">{n.title}</div>
+              <div className="notif-item-message">{base}</div>
+              {reason && <div className="notif-item-message">Reason: {reason}</div>}
+            </div>
+            );
+          })}
+          {notificationsError && <div className="notif-sub">{notificationsError}</div>}
+          <div className="notif-actions">
+            <button
+              className="notif-btn primary"
+              onClick={() => {
+                setShowNotificationPopup(false);
+                router.push('/client/notifications');
+              }}
+            >
+              View Notifications
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

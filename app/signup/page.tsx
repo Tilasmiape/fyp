@@ -12,6 +12,7 @@ interface SignupData {
   gender: string;
   dob: string;
   phoneNumber: string;
+  location: string;
   role: string;
   danceStyles: string[];
 }
@@ -28,6 +29,7 @@ export default function SignupPage() {
     gender: '',
     dob: '',
     phoneNumber: '',
+    location: '',
     danceStyles: [],
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -123,6 +125,11 @@ export default function SignupPage() {
         else if (!cleanedPhone.startsWith('98')) error = 'Must start with 98 (Nepali format)';
         break;
 
+      case 'location':
+        const locValue = value as string;
+        if (locValue && locValue.trim().length > 120) error = 'Address too long (max 120 chars)';
+        break;
+
       case 'danceStyles':
         const stylesArray = value as string[];
         if (formData.role === 'choreographer' && stylesArray.length === 0) {
@@ -184,6 +191,7 @@ export default function SignupPage() {
             gender: formData.gender,
             dateOfBirth: formData.dob,
             phoneNumber: formData.phoneNumber.replace(/\D/g, ''),
+            location: formData.location.trim(),
             danceStyles: formData.role === 'choreographer' ? formData.danceStyles : [],
           }),
         });
@@ -259,26 +267,25 @@ export default function SignupPage() {
           />
 
           {/* Logo Badge */}
-          <div style={{
-            position: 'absolute',
-            top: 30,
-            left: 30,
-            width: '70px',
-            height: '70px',
-            borderRadius: '50%',
-            backgroundColor: 'rgba(251, 191, 36, 0.2)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            border: '2px solid rgba(251, 191, 36, 0.5)',
-            boxShadow: '0 10px 25px rgba(251, 191, 36, 0.2)',
-            overflow: 'hidden',
-            zIndex: 10,
-          }}>
+            <div style={{
+              position: 'absolute',
+              top: 30,
+              left: 30,
+              width: '70px',
+              height: '70px',
+              borderRadius: '50%',
+              backgroundColor: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 10px 25px rgba(0,0,0,0.25)',
+              overflow: 'hidden',
+              zIndex: 10,
+            }}>
             <img
               src="/images/logo.png"
               alt="Logo"
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scale(1.2)' }}
             />
           </div>
         </div>
@@ -565,6 +572,33 @@ export default function SignupPage() {
                 }}
               />
               {errors.phoneNumber && <span style={{ color: '#ff6b6b', fontSize: '11px', marginTop: '3px', display: 'block' }}>{errors.phoneNumber}</span>}
+            </div>
+
+            {/* Address / Location */}
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: '600', marginBottom: '5px', color: 'rgba(255, 255, 255, 0.95)', display: 'block' }}>
+                Address / Location
+              </label>
+              <input
+                type="text"
+                name="location"
+                placeholder="City, area, or address"
+                value={formData.location}
+                onChange={handleChange}
+                onBlur={handleBlur}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: '6px',
+                  border: errors.location ? '1px solid #ff6b6b' : '1px solid rgba(255, 255, 255, 0.2)',
+                  backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                  color: '#333',
+                  fontSize: '13px',
+                  outline: 'none',
+                  transition: 'all 0.3s ease',
+                }}
+              />
+              {errors.location && <span style={{ color: '#ff6b6b', fontSize: '11px', marginTop: '3px', display: 'block' }}>{errors.location}</span>}
             </div>
 
             {/* Dance Styles - Only for Choreographer */}

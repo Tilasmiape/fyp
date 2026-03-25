@@ -138,19 +138,19 @@ export default function SigninPage() {
     width: '70px',
     height: '70px',
     borderRadius: '50%',
-    backgroundColor: 'rgba(251, 191, 36, 0.2)',
+    backgroundColor: '#fff',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     border: '2px solid rgba(251, 191, 36, 0.5)',
-    boxShadow: '0 10px 25px rgba(251, 191, 36, 0.2)',
+    boxShadow: '0 10px 25px rgba(0,0,0,0.25)',
     overflow: 'hidden',
     zIndex: 10,  // ← IMPORTANT!
   }}>
     <img 
       src="/images/logo.png"
       alt="Logo"
-      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+      style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scale(1.2)' }}
     />
   </div>
 </div>
@@ -352,3 +352,4 @@ export default function SigninPage() {
     </div>
   );
 }
+

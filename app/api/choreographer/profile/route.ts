@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 import { connectDB } from '@/lib/db';
 import User from '@/models/User';
+import { resolveAvailability, validateAvailabilityTimes } from '@/lib/availability';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-key-change-in-prod';
 const MAX_VIDEOS = 3;
@@ -13,7 +14,14 @@ interface AuthPayload {
 }
 
 function getAuthPayload(request: NextRequest): AuthPayload | null {
-  const token = request.cookies.get('authToken')?.value;
+  const cookieHeader = request.headers.get('cookie');
+  if (!cookieHeader) return null;
+  const cookies = cookieHeader.split(';').reduce((acc, cookie) => {
+    const [name, value] = cookie.trim().split('=');
+    acc[name] = value;
+    return acc;
+  }, {} as Record<string, string>);
+  const token = cookies['authToken'];
   if (!token) return null;
 
   try {
@@ -33,7 +41,7 @@ export async function GET(request: NextRequest) {
     }
 
     const user = await User.findById(auth.userId).select(
-      'fullName email phoneNumber bio pricePerSession danceStyles profileImage danceVideos role'
+      'fullName email phoneNumber bio location pricePerSession danceStyles profileImage danceVideos role approvalStatus availabilities'
     );
 
     if (!user) {
@@ -48,9 +56,12 @@ export async function GET(request: NextRequest) {
           email: user.email || '',
           phone: user.phoneNumber || '',
           bio: user.bio || '',
+          location: user.location || '',
           pricePerSession: user.pricePerSession || 0,
           danceStyles: user.danceStyles || [],
           profileImage: user.profileImage || '',
+          approvalStatus: user.approvalStatus || undefined,
+          availabilityTimes: resolveAvailability(user.availabilities),
           videos: (user.danceVideos || []).map((video: any) => ({
             id: video.id,
             url: video.url,
@@ -58,6 +69,7 @@ export async function GET(request: NextRequest) {
             description: video.description || '',
             uploadedAt: video.uploadedAt ? new Date(video.uploadedAt).toISOString() : new Date().toISOString(),
             status: video.status,
+            rejectionReason: video.rejectionReason || '',
           })),
         },
       },
@@ -84,32 +96,70 @@ export async function PUT(request: NextRequest) {
       email,
       phone,
       bio,
+      location,
       pricePerSession,
       danceStyles,
       profileImage,
       videos,
+      availabilityTimes,
     } = body || {};
 
-    if (!Array.isArray(videos)) {
-      return NextResponse.json({ error: 'Videos must be an array' }, { status: 400 });
+    // Videos validation only if explicitly provided
+    if (videos !== undefined) {
+      if (!Array.isArray(videos)) {
+        return NextResponse.json({ error: 'Videos must be an array' }, { status: 400 });
+      }
+      if (videos.length > MAX_VIDEOS) {
+        return NextResponse.json({ error: `Maximum ${MAX_VIDEOS} videos allowed` }, { status: 400 });
+      }
     }
 
-    if (videos.length > MAX_VIDEOS) {
-      return NextResponse.json({ error: `Maximum ${MAX_VIDEOS} videos allowed` }, { status: 400 });
-    }
+    // If this is an availability-only update, use direct atomic write to MongoDB
+    if (availabilityTimes !== undefined && videos === undefined && name === undefined && bio === undefined) {
+      const normalized = Array.isArray(availabilityTimes) ? availabilityTimes : [];
+      const sanitized = normalized
+        .filter((d: any) => d && typeof d.date === 'string' && d.date.length > 0)
+        .map((d: any) => ({
+          date: String(d.date).trim(),
+          timeSlots: Array.isArray(d.timeSlots)
+            ? d.timeSlots
+                .filter((s: any) => s && typeof s.time === 'string' && s.time.length > 0)
+                .map((s: any) => ({
+                  time: String(s.time).trim(),
+                  duration: Number(s.duration) || 60,
+                }))
+            : [],
+        }));
 
-    const normalizedVideos = videos.map((video: any) => ({
-      id: String(video.id || Date.now()),
-      url: String(video.url || ''),
-      title: String(video.title || '').trim(),
-      description: String(video.description || '').trim(),
-      uploadedAt: video.uploadedAt ? new Date(video.uploadedAt) : new Date(),
-      status: 'pending' as const,
-    }));
+      console.log('[Availability Save] userId:', auth.userId, 'sanitized:', JSON.stringify(sanitized));
 
-    const hasInvalidVideo = normalizedVideos.some((video: any) => !video.url || !video.title);
-    if (hasInvalidVideo) {
-      return NextResponse.json({ error: 'Each video requires url and title' }, { status: 400 });
+      const updated = await User.findByIdAndUpdate(
+        auth.userId,
+        { $set: { availabilities: sanitized } },
+        { new: true, runValidators: false }
+      ).select('fullName email phoneNumber bio location pricePerSession danceStyles profileImage danceVideos role approvalStatus availabilities');
+
+      console.log('[Availability Save] saved availabilities:', JSON.stringify(updated?.availabilities));
+
+      if (!updated) {
+        return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      }
+
+      return NextResponse.json({
+        success: true,
+        profile: {
+          name: updated.fullName || '',
+          email: updated.email || '',
+          phone: updated.phoneNumber || '',
+          bio: updated.bio || '',
+          location: updated.location || '',
+          pricePerSession: updated.pricePerSession || 0,
+          danceStyles: updated.danceStyles || [],
+          profileImage: updated.profileImage || '',
+          approvalStatus: updated.approvalStatus || undefined,
+          availabilityTimes: updated.availabilities || [],
+        },
+      }, { status: 200 });
     }
 
     const user = await User.findById(auth.userId);
@@ -121,10 +171,56 @@ export async function PUT(request: NextRequest) {
     user.email = email ? String(email).toLowerCase() : user.email;
     user.phoneNumber = phone ?? user.phoneNumber;
     user.bio = bio ?? user.bio;
+    user.location = location ?? user.location;
     user.pricePerSession = Number.isFinite(pricePerSession) ? Number(pricePerSession) : user.pricePerSession;
     user.danceStyles = Array.isArray(danceStyles) ? danceStyles : user.danceStyles;
     user.profileImage = profileImage ?? user.profileImage;
-    user.danceVideos = normalizedVideos;
+    if (availabilityTimes !== undefined) {
+      const normalized = Array.isArray(availabilityTimes) ? availabilityTimes : [];
+      const sanitized = normalized
+        .filter((d: any) => d && typeof d.date === 'string' && d.date.length > 0)
+        .map((d: any) => ({
+          date: String(d.date).trim(),
+          timeSlots: Array.isArray(d.timeSlots)
+            ? d.timeSlots
+                .filter((s: any) => s && typeof s.time === 'string' && s.time.length > 0)
+                .map((s: any) => ({
+                  time: String(s.time).trim(),
+                  duration: Number(s.duration) || 60,
+                }))
+            : [],
+        }));
+      user.availabilities = sanitized;
+      user.markModified('availabilities');
+    }
+
+    // Only update videos if they were explicitly provided in the request
+    if (Array.isArray(videos)) {
+      const normalizedVideos = videos.map((video: any) => ({
+        id: String(video.id || Date.now()),
+        url: String(video.url || ''),
+        title: String(video.title || '').trim(),
+        description: String(video.description || '').trim(),
+        uploadedAt: video.uploadedAt ? new Date(video.uploadedAt) : new Date(),
+      }));
+
+      const hasInvalidVideo = normalizedVideos.some((video: any) => !video.url || !video.title);
+      if (hasInvalidVideo) {
+        return NextResponse.json({ error: 'Each video requires url and title' }, { status: 400 });
+      }
+
+      const existingVideos = new Map(
+        (user.danceVideos || []).map((video: any) => [String(video.id), video])
+      );
+      user.danceVideos = normalizedVideos.map((video: any) => {
+        const existing = existingVideos.get(String(video.id));
+        return {
+          ...video,
+          status: (existing as any)?.status || 'pending',
+          rejectionReason: (existing as any)?.rejectionReason || '',
+        };
+      });
+    }
 
     await user.save();
 
@@ -136,9 +232,12 @@ export async function PUT(request: NextRequest) {
           email: user.email || '',
           phone: user.phoneNumber || '',
           bio: user.bio || '',
+          location: user.location || '',
           pricePerSession: user.pricePerSession || 0,
           danceStyles: user.danceStyles || [],
           profileImage: user.profileImage || '',
+          approvalStatus: user.approvalStatus || undefined,
+          availabilityTimes: resolveAvailability(user.availabilities),
           videos: (user.danceVideos || []).map((video: any) => ({
             id: video.id,
             url: video.url,
@@ -146,6 +245,7 @@ export async function PUT(request: NextRequest) {
             description: video.description || '',
             uploadedAt: video.uploadedAt ? new Date(video.uploadedAt).toISOString() : new Date().toISOString(),
             status: video.status,
+            rejectionReason: video.rejectionReason || '',
           })),
         },
       },

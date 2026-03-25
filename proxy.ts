@@ -8,8 +8,20 @@ const roleBasedRoutes = {
   '/choreographer/home': ['choreographer'],
   '/admin/home': ['super-admin']
 };
+
+function getTokenFromRequest(request: NextRequest): string | null {
+  const cookieHeader = request.headers.get('cookie');
+  if (!cookieHeader) return null;
+  const cookies = cookieHeader.split(';').reduce((acc, cookie) => {
+    const [name, value] = cookie.trim().split('=');
+    acc[name] = value;
+    return acc;
+  }, {} as Record<string, string>);
+  return cookies['authToken'] || null;
+}
+
 export function proxy(request: NextRequest) {
-  const token = request.cookies.get('authToken')?.value;
+  const token = getTokenFromRequest(request);
   const pathname = request.nextUrl.pathname;
 
   const publicRoutes = ['/sign-in', '/sign-up', '/', '/api/auth'];
@@ -44,6 +56,6 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)']
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|api).*)']
 };
 

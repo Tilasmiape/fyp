@@ -11,9 +11,17 @@ export interface IUser extends Document {
     dateOfBirth?: string;
     phoneNumber?: string;
     bio?: string;
+    location?: string;
     profileImage?: string;
     danceStyles?: string[];
     pricePerSession?: number;
+    availabilities?: {
+        date: string; // YYYY-MM-DD format
+        timeSlots: {
+            time: string;
+            duration: number; // in minutes
+        }[];
+    }[];
     danceVideos?: {
         id: string;
         url: string;
@@ -21,6 +29,7 @@ export interface IUser extends Document {
         description?: string;
         uploadedAt: Date;
         status: 'pending' | 'approved' | 'rejected';
+        rejectionReason?: string;
     }[];
     createdAt: Date;
     updatedAt: Date;
@@ -80,6 +89,11 @@ const UserSchema = new Schema<IUser>(
             type: String,
             maxlength: [500, 'Bio cannot be more than 500 characters'],
         },
+        location: {
+            type: String,
+            maxlength: [120, 'Location cannot be more than 120 characters'],
+            trim: true,
+        },
         profileImage: {
             type: String,
         },
@@ -91,6 +105,23 @@ const UserSchema = new Schema<IUser>(
             type: Number,
             default: 0,
         },
+        availabilities: {
+            type: [
+                {
+                    date: { type: String, required: true }, // YYYY-MM-DD format
+                    timeSlots: {
+                        type: [
+                            {
+                                time: { type: String, required: true },
+                                duration: { type: Number, required: true, min: 15, max: 180 }, // 15 minutes to 3 hours
+                            },
+                        ],
+                        default: [],
+                    },
+                },
+            ],
+            default: [],
+        },
         danceVideos: {
             type: [
                 {
@@ -100,6 +131,7 @@ const UserSchema = new Schema<IUser>(
                     description: { type: String, default: '', trim: true },
                     uploadedAt: { type: Date, default: Date.now },
                     status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+                    rejectionReason: { type: String, default: '', trim: true },
                 },
             ],
             default: [],

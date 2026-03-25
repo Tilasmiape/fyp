@@ -6,25 +6,25 @@ export async function GET(request: NextRequest) {
     try {
         await connectDB();
 
-        // Get all videos with pending status from choreographers only
+        // Get all choreographers (for filter list)
+        const choreographers = await User.find({ role: 'choreographer' }).select('fullName');
+
+        // Get all videos from choreographers
         const usersWithVideos = await User.find({
             role: 'choreographer',
-            'danceVideos.status': 'pending'
         }).select('fullName email danceVideos');
 
-        const pendingVideos = usersWithVideos.flatMap(user =>
-            user.danceVideos
-                .filter((video: any) => video.status === 'pending')
-                .map((video: any) => ({
-                    ...video.toObject(),
-                    choreographerName: user.fullName,
-                    choreographerEmail: user.email,
-                    choreographerId: user._id
-                }))
+        const allVideos = usersWithVideos.flatMap(user =>
+            (user.danceVideos || []).map((video: any) => ({
+                ...video.toObject(),
+                choreographerName: user.fullName,
+                choreographerEmail: user.email,
+                choreographerId: user._id,
+            }))
         );
 
         return NextResponse.json(
-            { success: true, videos: pendingVideos },
+            { success: true, videos: allVideos, choreographers: choreographers.map(c => c.fullName).filter(Boolean) },
             { status: 200 }
         );
     } catch (error) {
@@ -40,7 +40,7 @@ export async function PUT(request: NextRequest) {
     try {
         await connectDB();
 
-        const { choreographerId, videoId, action } = await request.json();
+        const { choreographerId, videoId, action, reason } = await request.json();
 
         if (!choreographerId || !videoId || !['approve', 'reject'].includes(action)) {
             return NextResponse.json(
@@ -49,11 +49,19 @@ export async function PUT(request: NextRequest) {
             );
         }
 
+        if (action === 'reject' && (!reason || !String(reason).trim())) {
+            return NextResponse.json(
+                { error: 'Rejection reason is required' },
+                { status: 400 }
+            );
+        }
+
         const status = action === 'approve' ? 'approved' : 'rejected';
+        const rejectionReason = action === 'reject' ? String(reason).trim() : '';
 
         const user = await User.findOneAndUpdate(
             { _id: choreographerId, 'danceVideos.id': videoId },
-            { $set: { 'danceVideos.$.status': status } },
+            { $set: { 'danceVideos.$.status': status, 'danceVideos.$.rejectionReason': rejectionReason } },
             { new: true }
         );
 

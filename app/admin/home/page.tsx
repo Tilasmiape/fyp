@@ -232,18 +232,17 @@ export default function AdminDashboard() {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{
-            width: '45px',
-            height: '45px',
+            width: '48px',
+            height: '48px',
             borderRadius: '50%',
-            background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
+            backgroundColor: '#fff',
+            boxShadow: '0 6px 16px rgba(0,0,0,0.25)',
+            overflow: 'hidden',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontWeight: '700',
-            fontSize: '18px',
-            color: '#000',
           }}>
-            A
+            <img src="/images/logo.png" alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scale(1.2)' }} />
           </div>
           <div>
             <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#fff' }}>
@@ -256,6 +255,20 @@ export default function AdminDashboard() {
         </div>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+          <button
+            onClick={() => router.push('/admin/requests')}
+            style={{
+              background: 'rgba(255, 255, 255, 0.1)',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              color: '#fff',
+              fontSize: '14px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              padding: '8px 16px',
+              borderRadius: '8px',
+            }}>
+            Pending Requests
+          </button>
           <button 
             onClick={() => router.push('/admin/videos')}
             style={{

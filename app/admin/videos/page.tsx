@@ -10,14 +10,18 @@ interface Video {
   description?: string;
   uploadedAt: string;
   status: string;
+  rejectionReason?: string;
   choreographerName: string;
   choreographerEmail: string;
   choreographerId: string;
+  style?: string;
+  location?: string;
 }
 
 export default function VideosPage() {
   const router = useRouter();
   const [videos, setVideos] = useState<Video[]>([]);
+  const [choreographers, setChoreographers] = useState<string[]>([]);
   const [filteredVideos, setFilteredVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -26,27 +30,67 @@ export default function VideosPage() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [choreographerFilter, setChoreographerFilter] = useState('');
+  const [styleFilter, setStyleFilter] = useState('');
+  const [locationFilter, setLocationFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
 
-  const uniqueChoreographers = Array.from(new Set(videos.map(v => v.choreographerName))).sort();
+  const uniqueChoreographers = Array.from(new Set(choreographers)).sort();
+  const normalizedChoreoQuery = choreographerFilter.trim().toLowerCase();
+  const sortedChoreographers = normalizedChoreoQuery
+    ? [...uniqueChoreographers].sort((a, b) => {
+        const aStarts = a.toLowerCase().startsWith(normalizedChoreoQuery);
+        const bStarts = b.toLowerCase().startsWith(normalizedChoreoQuery);
+        if (aStarts !== bStarts) return aStarts ? -1 : 1;
+        const aIncludes = a.toLowerCase().includes(normalizedChoreoQuery);
+        const bIncludes = b.toLowerCase().includes(normalizedChoreoQuery);
+        if (aIncludes !== bIncludes) return aIncludes ? -1 : 1;
+        return a.localeCompare(b);
+      })
+    : uniqueChoreographers;
+
+  const uniqueStyles = Array.from(
+    new Set(videos.map(v => v.style).filter(Boolean) as string[])
+  ).sort();
+  const uniqueLocations = Array.from(
+    new Set(videos.map(v => v.location).filter(Boolean) as string[])
+  ).sort();
 
   useEffect(() => { fetchVideos(); }, []);
 
   useEffect(() => {
     let filtered = videos;
-    if (searchTerm) filtered = filtered.filter(v => v.title.toLowerCase().includes(searchTerm.toLowerCase()));
-    if (choreographerFilter) filtered = filtered.filter(v => v.choreographerName === choreographerFilter);
+    if (searchTerm) {
+      const lower = searchTerm.toLowerCase();
+      filtered = filtered.filter(v =>
+        v.title.toLowerCase().includes(lower) ||
+        v.choreographerName.toLowerCase().includes(lower)
+      );
+    }
+    if (choreographerFilter) {
+      const lower = choreographerFilter.toLowerCase();
+      filtered = filtered.filter(v => v.choreographerName.toLowerCase().includes(lower));
+    }
+    if (styleFilter) {
+      const lower = styleFilter.toLowerCase();
+      filtered = filtered.filter(v => (v.style || '').toLowerCase().includes(lower));
+    }
+    if (locationFilter) {
+      const lower = locationFilter.toLowerCase();
+      filtered = filtered.filter(v => (v.location || '').toLowerCase().includes(lower));
+    }
     if (statusFilter !== 'all') filtered = filtered.filter(v => v.status === statusFilter);
     setFilteredVideos(filtered);
-  }, [videos, searchTerm, choreographerFilter, statusFilter]);
+  }, [videos, searchTerm, choreographerFilter, styleFilter, locationFilter, statusFilter]);
 
   const fetchVideos = async () => {
     try {
       const res = await fetch('/api/admin/videos');
       if (!res.ok) throw new Error('Failed to fetch videos');
       const data = await res.json();
-      if (data.success) setVideos(data.videos);
-      else setError('Failed to load videos');
+      if (data.success) {
+        setVideos(data.videos);
+        setChoreographers(Array.isArray(data.choreographers) ? data.choreographers : []);
+      } else setError('Failed to load videos');
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -54,19 +98,25 @@ export default function VideosPage() {
     }
   };
 
-  const handleVideoAction = async (choreographerId: string, videoId: string, action: 'approve' | 'reject') => {
+  const handleVideoAction = async (choreographerId: string, videoId: string, action: 'approve' | 'reject', reason?: string) => {
     setProcessing(videoId);
     try {
       const res = await fetch('/api/admin/videos', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ choreographerId, videoId, action }),
+        body: JSON.stringify({ choreographerId, videoId, action, reason }),
       });
       if (!res.ok) throw new Error('Failed to update video status');
       const data = await res.json();
       if (data.success) {
         setVideos(videos.map(v =>
-          v.id === videoId ? { ...v, status: action === 'approve' ? 'approved' : 'rejected' } : v
+          v.id === videoId
+            ? {
+                ...v,
+                status: action === 'approve' ? 'approved' : 'rejected',
+                rejectionReason: action === 'reject' ? (reason || '') : '',
+              }
+            : v
         ));
       } else setError('Failed to update video status');
     } catch (err: any) {
@@ -76,7 +126,23 @@ export default function VideosPage() {
     }
   };
 
-  const clearAllFilters = () => { setSearchTerm(''); setChoreographerFilter(''); setStatusFilter('all'); };
+  const handleReject = async (choreographerId: string, videoId: string) => {
+    const reason = window.prompt('Please enter the reason for rejecting this video:');
+    if (reason === null) return;
+    if (!reason.trim()) {
+      setError('Rejection reason is required.');
+      return;
+    }
+    await handleVideoAction(choreographerId, videoId, 'reject', reason.trim());
+  };
+
+  const clearAllFilters = () => {
+    setSearchTerm('');
+    setChoreographerFilter('');
+    setStyleFilter('');
+    setLocationFilter('');
+    setStatusFilter('all');
+  };
 
   const totalPending = videos.filter(v => v.status === 'pending').length;
   const totalApproved = videos.filter(v => v.status === 'approved').length;
@@ -121,11 +187,14 @@ export default function VideosPage() {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{
-            width: '45px', height: '45px', borderRadius: '50%',
-            background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
+            width: '48px', height: '48px', borderRadius: '50%',
+            backgroundColor: '#fff',
+            boxShadow: '0 6px 16px rgba(0,0,0,0.25)',
+            overflow: 'hidden',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: '700', fontSize: '18px', color: '#000',
-          }}>S</div>
+          }}>
+            <img src="/images/logo.png" alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scale(1.2)' }} />
+          </div>
           <div>
             <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#fff' }}>Step Out Studio</h2>
             <p style={{ margin: 0, fontSize: '12px', color: 'rgba(255,255,255,0.7)' }}>Video Management</p>
@@ -196,15 +265,15 @@ export default function VideosPage() {
             </button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '20px' }}>
             {/* Search */}
             <div>
               <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
-                Search by Video Title
+                Search by Title or Choreographer
               </label>
               <input
                 type="text"
-                placeholder="Enter video title..."
+                placeholder="Enter title or choreographer..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
                 style={{ width: '100%', padding: '12px 14px', border: '2px solid #e5e7eb', borderRadius: '10px', fontSize: '14px', outline: 'none', transition: 'border-color 0.2s', boxSizing: 'border-box' }}
@@ -216,16 +285,56 @@ export default function VideosPage() {
               <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
                 Filter by Choreographer
               </label>
-              <select
-                value={choreographerFilter}
-                onChange={e => setChoreographerFilter(e.target.value)}
+            <input
+              list="choreographer-options"
+              value={choreographerFilter}
+              onChange={e => setChoreographerFilter(e.target.value)}
+              placeholder="All choreographers (type a name)"
+              style={{ width: '100%', padding: '12px 14px', border: '2px solid #e5e7eb', borderRadius: '10px', fontSize: '14px', outline: 'none', backgroundColor: '#fff', boxSizing: 'border-box' }}
+            />
+            <datalist id="choreographer-options">
+              {sortedChoreographers.map(name => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
+            </div>
+
+            {/* Style */}
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
+                Filter by Style
+              </label>
+              <input
+                list="style-options"
+                value={styleFilter}
+                onChange={e => setStyleFilter(e.target.value)}
+                placeholder="All styles (type a style)"
                 style={{ width: '100%', padding: '12px 14px', border: '2px solid #e5e7eb', borderRadius: '10px', fontSize: '14px', outline: 'none', backgroundColor: '#fff', boxSizing: 'border-box' }}
-              >
-                <option value="">All Choreographers</option>
-                {uniqueChoreographers.map(name => (
-                  <option key={name} value={name}>{name}</option>
+              />
+              <datalist id="style-options">
+                {uniqueStyles.map(style => (
+                  <option key={style} value={style} />
                 ))}
-              </select>
+              </datalist>
+            </div>
+
+            {/* Location */}
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
+                Filter by Location
+              </label>
+              <input
+                list="location-options"
+                value={locationFilter}
+                onChange={e => setLocationFilter(e.target.value)}
+                placeholder="All locations (type a location)"
+                style={{ width: '100%', padding: '12px 14px', border: '2px solid #e5e7eb', borderRadius: '10px', fontSize: '14px', outline: 'none', backgroundColor: '#fff', boxSizing: 'border-box' }}
+              />
+              <datalist id="location-options">
+                {uniqueLocations.map(location => (
+                  <option key={location} value={location} />
+                ))}
+              </datalist>
             </div>
           </div>
 
@@ -275,7 +384,7 @@ export default function VideosPage() {
             <div style={{ textAlign: 'center', padding: '60px 0', color: '#9ca3af' }}>
               <div style={{ fontSize: '40px', marginBottom: '12px' }}>🎬</div>
               <p style={{ margin: 0, fontSize: '15px', fontWeight: '600', color: '#6b7280' }}>
-                {searchTerm || choreographerFilter || statusFilter !== 'all' ? 'No videos match your filters.' : 'No videos to review.'}
+                {searchTerm || choreographerFilter || styleFilter || locationFilter || statusFilter !== 'all' ? 'No videos match your filters.' : 'No videos to review.'}
               </p>
             </div>
           ) : view === 'cards' ? (
@@ -313,6 +422,11 @@ export default function VideosPage() {
                         {video.description}
                       </p>
                     )}
+                    {video.status === 'rejected' && video.rejectionReason && (
+                      <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#b91c1c', lineHeight: '1.4' }}>
+                        Reason: {video.rejectionReason}
+                      </p>
+                    )}
                     <div style={{ marginBottom: '14px' }}>
                       <p style={{ margin: 0, fontSize: '13px', fontWeight: '600', color: '#374151' }}>{video.choreographerName}</p>
                       <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#9ca3af' }}>{video.choreographerEmail}</p>
@@ -333,7 +447,7 @@ export default function VideosPage() {
                         {processing === video.id ? '...' : 'Approve'}
                       </button>
                       <button
-                        onClick={() => handleVideoAction(video.choreographerId, video.id, 'reject')}
+                        onClick={() => handleReject(video.choreographerId, video.id)}
                         disabled={processing === video.id || video.status === 'rejected'}
                         style={{
                           flex: 1, padding: '10px', backgroundColor: '#ef4444', color: '#fff',
@@ -384,6 +498,11 @@ export default function VideosPage() {
                       <td style={{ padding: '14px 16px' }}>{statusBadge(video.status)}</td>
                       <td style={{ padding: '14px 16px', color: '#6b7280', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {video.description || '—'}
+                        {video.status === 'rejected' && video.rejectionReason && (
+                          <div style={{ marginTop: '6px', color: '#b91c1c', fontSize: '12px', whiteSpace: 'normal' }}>
+                            Reason: {video.rejectionReason}
+                          </div>
+                        )}
                       </td>
                       <td style={{ padding: '14px 16px', color: '#6b7280', whiteSpace: 'nowrap' }}>
                         {new Date(video.uploadedAt).toLocaleDateString()}
@@ -403,7 +522,7 @@ export default function VideosPage() {
                             {processing === video.id ? '...' : 'Approve'}
                           </button>
                           <button
-                            onClick={() => handleVideoAction(video.choreographerId, video.id, 'reject')}
+                            onClick={() => handleReject(video.choreographerId, video.id)}
                             disabled={processing === video.id || video.status === 'rejected'}
                             style={{
                               padding: '8px 14px', backgroundColor: '#ef4444', color: '#fff',
@@ -427,3 +546,4 @@ export default function VideosPage() {
     </div>
   );
 }
+
