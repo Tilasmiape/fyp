@@ -15,13 +15,7 @@ export interface IUser extends Document {
     profileImage?: string;
     danceStyles?: string[];
     pricePerSession?: number;
-    availabilities?: {
-        date: string; // YYYY-MM-DD format
-        timeSlots: {
-            time: string;
-            duration: number; // in minutes
-        }[];
-    }[];
+    groupSessionPriceMultiplier?: number;
     danceVideos?: {
         id: string;
         url: string;
@@ -105,22 +99,11 @@ const UserSchema = new Schema<IUser>(
             type: Number,
             default: 0,
         },
-        availabilities: {
-            type: [
-                {
-                    date: { type: String, required: true }, // YYYY-MM-DD format
-                    timeSlots: {
-                        type: [
-                            {
-                                time: { type: String, required: true },
-                                duration: { type: Number, required: true, min: 15, max: 180 }, // 15 minutes to 3 hours
-                            },
-                        ],
-                        default: [],
-                    },
-                },
-            ],
-            default: [],
+        groupSessionPriceMultiplier: {
+            type: Number,
+            default: 1.3,
+            min: 1,
+            max: 5,
         },
         danceVideos: {
             type: [
@@ -139,7 +122,13 @@ const UserSchema = new Schema<IUser>(
     },
     {
         timestamps: true,
+        strict: false, // Allow writing fields not explicitly defined to prevent silent drops
     }
 );
 
-export default mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
+// Delete cached model to ensure schema changes take effect across hot reloads
+if (mongoose.models.User) {
+    delete (mongoose.models as any)['User'];
+}
+
+export default mongoose.model<IUser>('User', UserSchema);

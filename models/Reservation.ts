@@ -8,7 +8,11 @@ export interface IReservation extends Document {
   duration: number;
   sessionType: 'studio' | 'in-house';
   location?: string;
+  sessionCategory: 'individual' | 'group';
+  participantCount?: number;
+  notes?: string;
   pricePerSession: number;
+  groupSessionMultiplier?: number;
   total: number;
   status: 'pending' | 'accepted' | 'rejected' | 'cancelled';
   decisionReason?: string;
@@ -26,7 +30,11 @@ const ReservationSchema = new Schema<IReservation>(
     duration: { type: Number, required: true, default: 60 },
     sessionType: { type: String, enum: ['studio', 'in-house'], required: true },
     location: { type: String, default: '' },
+    sessionCategory: { type: String, enum: ['individual', 'group'], default: 'individual' },
+    participantCount: { type: Number, default: 1, min: 1, max: 100 },
+    notes: { type: String, default: '', trim: true },
     pricePerSession: { type: Number, required: true },
+    groupSessionMultiplier: { type: Number, default: 1 },
     total: { type: Number, required: true },
     status: { type: String, enum: ['pending', 'accepted', 'rejected', 'cancelled'], default: 'pending' },
     decisionReason: { type: String, default: '' },

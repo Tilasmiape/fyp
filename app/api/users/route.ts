@@ -63,8 +63,7 @@ export async function POST(request: NextRequest) {
 
         await newUser.save();
 
-        const userResponse = newUser.toObject();
-        delete userResponse.password;
+        const { password: _, ...userResponse } = newUser.toObject();
 
         return NextResponse.json(
             { success: true, user: userResponse },

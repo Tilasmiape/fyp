@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
 import User from '@/models/User';
+import Availability from '@/models/Availability';
 import { resolveAvailability } from '@/lib/availability';
 
 export async function GET(
@@ -13,7 +14,7 @@ export async function GET(
     const user = await User.findOne({
       _id: id,
       role: 'choreographer',
-    }).select('fullName email bio location pricePerSession danceStyles profileImage danceVideos approvalStatus status availabilities');
+    }).select('fullName email bio location pricePerSession groupSessionPriceMultiplier danceStyles profileImage danceVideos approvalStatus status');
 
     if (!user) {
       return NextResponse.json({ error: 'Choreographer not found' }, { status: 404 });
@@ -22,6 +23,9 @@ export async function GET(
       return NextResponse.json({ error: 'Choreographer not found' }, { status: 404 });
     }
 
+    // Fetch availability from separate collection
+    const availabilityDocs = await Availability.find({ choreographerId: id }).select('date timeSlots -_id');
+
     const payload = {
       id: user._id,
       name: user.fullName || '',
@@ -29,10 +33,10 @@ export async function GET(
       bio: user.bio || '',
       location: user.location || '',
       pricePerSession: user.pricePerSession || 0,
+      groupSessionPriceMultiplier: user.groupSessionPriceMultiplier || 1.3,
       danceStyles: user.danceStyles || [],
       profileImage: user.profileImage || '',
-      availabilities: user.availabilities,
-      availabilityTimes: resolveAvailability(user.availabilities),
+      availabilityTimes: availabilityDocs,
       videos: (user.danceVideos || [])
         .filter((v: any) => v.status === 'approved')
         .map((video: any) => ({

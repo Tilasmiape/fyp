@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
 import User from '@/models/User';
+import Availability from '@/models/Availability';
 import { resolveAvailability } from '@/lib/availability';
 
 export async function GET(request: NextRequest) {
@@ -14,7 +15,19 @@ export async function GET(request: NextRequest) {
     const choreographers = await User.find({
       role: 'choreographer',
       status: 'active',
-    }).select('fullName email bio location pricePerSession danceStyles profileImage danceVideos approvalStatus availabilities');
+    }).select('fullName email bio location pricePerSession groupSessionPriceMultiplier danceStyles profileImage danceVideos approvalStatus');
+
+    // Fetch all availabilities for these choreographers
+    const choreographerIds = choreographers.map(c => c._id);
+    const allAvailabilities = await Availability.find({ choreographerId: { $in: choreographerIds } });
+
+    // Group availabilities by choreographerId
+    const availabilityMap = allAvailabilities.reduce((acc: any, curr: any) => {
+      const id = curr.choreographerId.toString();
+      if (!acc[id]) acc[id] = [];
+      acc[id].push({ date: curr.date, timeSlots: curr.timeSlots });
+      return acc;
+    }, {});
 
     const payload = choreographers.map((user: any) => ({
       id: user._id,
@@ -23,10 +36,11 @@ export async function GET(request: NextRequest) {
       bio: user.bio || '',
       location: user.location || '',
       pricePerSession: user.pricePerSession || 0,
+      groupSessionPriceMultiplier: user.groupSessionPriceMultiplier || 1.3,
       danceStyles: user.danceStyles || [],
       profileImage: user.profileImage || '',
       approvalStatus: user.approvalStatus || undefined,
-      availabilityTimes: resolveAvailability(user.availabilities),
+      availabilityTimes: availabilityMap[user._id.toString()] || [],
       videos: (user.danceVideos || [])
         .filter((v: any) => v.status === 'approved')
         .map((video: any) => ({

@@ -16,12 +16,23 @@ interface ProfilePayload {
   videos?: DanceVideo[];
 }
 
+interface APINotification {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  createdAt: string;
+  read: boolean;
+  reservationId?: any;
+}
+
 interface NotificationItem {
   id: string;
-  type: 'approved' | 'rejected' | 'pending' | 'info';
+  type: 'approved' | 'rejected' | 'pending' | 'info' | 'session-requested' | 'session-accepted' | 'session-rejected';
   title: string;
   message: string;
   date?: string;
+  read?: boolean;
 }
 
 export default function ChoreographerNotificationsPage() {
@@ -29,24 +40,39 @@ export default function ChoreographerNotificationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [profile, setProfile] = useState<ProfilePayload>({});
+  const [apiNotifications, setApiNotifications] = useState<APINotification[]>([]);
 
   useEffect(() => {
-    const fetchProfile = async () => {
+    const fetchData = async () => {
       try {
         setLoading(true);
         setError('');
-        const res = await fetch('/api/choreographer/profile', {
+
+        // Fetch profile
+        const profileRes = await fetch('/api/choreographer/profile', {
           method: 'GET',
           credentials: 'include',
         });
-        const data = await res.json();
-        if (!res.ok || !data?.success) {
-          throw new Error(data?.error || 'Failed to load notifications');
+        const profileData = await profileRes.json();
+        if (!profileRes.ok || !profileData?.success) {
+          throw new Error(profileData?.error || 'Failed to load profile');
         }
         setProfile({
-          approvalStatus: data?.profile?.approvalStatus,
-          videos: Array.isArray(data?.profile?.videos) ? data.profile.videos : [],
+          approvalStatus: profileData?.profile?.approvalStatus,
+          videos: Array.isArray(profileData?.profile?.videos)
+            ? profileData.profile.videos
+            : [],
         });
+
+        // Fetch notifications
+        const notifRes = await fetch('/api/notifications', {
+          method: 'GET',
+          credentials: 'include',
+        });
+        const notifData = await notifRes.json();
+        if (notifRes.ok && notifData?.success) {
+          setApiNotifications(Array.isArray(notifData?.notifications) ? notifData.notifications : []);
+        }
       } catch (err: any) {
         setError(err.message || 'Failed to load notifications');
       } finally {
@@ -54,12 +80,25 @@ export default function ChoreographerNotificationsPage() {
       }
     };
 
-    fetchProfile();
+    fetchData();
   }, []);
 
   const notifications = useMemo<NotificationItem[]>(() => {
     const list: NotificationItem[] = [];
 
+    // Add API notifications
+    apiNotifications.forEach((n: APINotification) => {
+      list.push({
+        id: n.id,
+        type: (n.type as any) || 'info',
+        title: n.title,
+        message: n.message,
+        date: n.createdAt,
+        read: n.read,
+      });
+    });
+
+    // Add profile-based notifications
     if (profile.approvalStatus) {
       if (profile.approvalStatus === 'approved') {
         list.push({
@@ -82,13 +121,14 @@ export default function ChoreographerNotificationsPage() {
           id: 'account-rejected',
           type: 'rejected',
           title: 'Account Rejected',
-          message: 'Your choreographer account was rejected. Update your profile and contact support for review.',
+          message:
+            'Your choreographer account was rejected. Update your profile and contact support for review.',
         });
       }
     }
 
-    const rejectedVideos = (profile.videos || []).filter(v => v.status === 'rejected');
-    rejectedVideos.forEach(v => {
+    const rejectedVideos = (profile.videos || []).filter((v) => v.status === 'rejected');
+    rejectedVideos.forEach((v) => {
       list.push({
         id: `video-${v.id}`,
         type: 'rejected',
@@ -103,7 +143,7 @@ export default function ChoreographerNotificationsPage() {
       const bTime = b.date ? new Date(b.date).getTime() : 0;
       return bTime - aTime;
     });
-  }, [profile]);
+  }, [profile, apiNotifications]);
 
   const badgeStyle = (type: NotificationItem['type']) => {
     const map = {
@@ -111,6 +151,9 @@ export default function ChoreographerNotificationsPage() {
       rejected: { bg: 'rgba(239,68,68,0.16)', color: '#f87171', border: 'rgba(239,68,68,0.35)' },
       pending: { bg: 'rgba(245,158,11,0.16)', color: '#fbbf24', border: 'rgba(245,158,11,0.35)' },
       info: { bg: 'rgba(59,130,246,0.16)', color: '#93c5fd', border: 'rgba(59,130,246,0.35)' },
+      'session-requested': { bg: 'rgba(168, 85, 247, 0.16)', color: '#d8b4fe', border: 'rgba(168, 85, 247, 0.35)' },
+      'session-accepted': { bg: 'rgba(16,185,129,0.16)', color: '#34d399', border: 'rgba(16,185,129,0.35)' },
+      'session-rejected': { bg: 'rgba(239,68,68,0.16)', color: '#f87171', border: 'rgba(239,68,68,0.35)' },
     } as const;
     return map[type] || map.info;
   };

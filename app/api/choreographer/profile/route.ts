@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 import { connectDB } from '@/lib/db';
 import User from '@/models/User';
+import Availability from '@/models/Availability';
 import { resolveAvailability, validateAvailabilityTimes } from '@/lib/availability';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-key-change-in-prod';
@@ -41,12 +42,15 @@ export async function GET(request: NextRequest) {
     }
 
     const user = await User.findById(auth.userId).select(
-      'fullName email phoneNumber bio location pricePerSession danceStyles profileImage danceVideos role approvalStatus availabilities'
+      'fullName email phoneNumber bio location pricePerSession danceStyles profileImage danceVideos role approvalStatus'
     );
 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
+
+    // Fetch availability from separate collection
+    const availabilityDocs = await Availability.find({ choreographerId: auth.userId }).select('date timeSlots -_id');
 
     return NextResponse.json(
       {
@@ -61,7 +65,7 @@ export async function GET(request: NextRequest) {
           danceStyles: user.danceStyles || [],
           profileImage: user.profileImage || '',
           approvalStatus: user.approvalStatus || undefined,
-          availabilityTimes: resolveAvailability(user.availabilities),
+          availabilityTimes: availabilityDocs,
           videos: (user.danceVideos || []).map((video: any) => ({
             id: video.id,
             url: video.url,
@@ -104,46 +108,39 @@ export async function PUT(request: NextRequest) {
       availabilityTimes,
     } = body || {};
 
-    // Videos validation only if explicitly provided
-    if (videos !== undefined) {
-      if (!Array.isArray(videos)) {
-        return NextResponse.json({ error: 'Videos must be an array' }, { status: 400 });
-      }
-      if (videos.length > MAX_VIDEOS) {
-        return NextResponse.json({ error: `Maximum ${MAX_VIDEOS} videos allowed` }, { status: 400 });
-      }
-    }
-
-    // If this is an availability-only update, use direct atomic write to MongoDB
-    if (availabilityTimes !== undefined && videos === undefined && name === undefined && bio === undefined) {
+    let sanitizedAvailability: any[] | null = null;
+    if (availabilityTimes !== undefined) {
       const normalized = Array.isArray(availabilityTimes) ? availabilityTimes : [];
-      const sanitized = normalized
+      sanitizedAvailability = normalized
         .filter((d: any) => d && typeof d.date === 'string' && d.date.length > 0)
         .map((d: any) => ({
           date: String(d.date).trim(),
           timeSlots: Array.isArray(d.timeSlots)
             ? d.timeSlots
-                .filter((s: any) => s && typeof s.time === 'string' && s.time.length > 0)
-                .map((s: any) => ({
-                  time: String(s.time).trim(),
-                  duration: Number(s.duration) || 60,
-                }))
+              .filter((s: any) => s && typeof s.time === 'string' && s.time.length > 0)
+              .map((s: any) => ({
+                time: String(s.time).trim(),
+                duration: Number(s.duration) || 60,
+              }))
             : [],
         }));
+    }
 
-      console.log('[Availability Save] userId:', auth.userId, 'sanitized:', JSON.stringify(sanitized));
+    // If this is an availability-only update, we can be more efficient
+    const isOnlyAvailability = availabilityTimes !== undefined && videos === undefined && name === undefined && bio === undefined;
 
-      const updated = await User.findByIdAndUpdate(
-        auth.userId,
-        { $set: { availabilities: sanitized } },
-        { new: true, runValidators: false }
-      ).select('fullName email phoneNumber bio location pricePerSession danceStyles profileImage danceVideos role approvalStatus availabilities');
-
-      console.log('[Availability Save] saved availabilities:', JSON.stringify(updated?.availabilities));
-
-      if (!updated) {
-        return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    if (sanitizedAvailability !== null) {
+      await Availability.deleteMany({ choreographerId: auth.userId });
+      if (sanitizedAvailability.length > 0) {
+        await Availability.insertMany(
+          sanitizedAvailability.map((s: any) => ({ ...s, choreographerId: auth.userId }))
+        );
       }
+    }
+
+    if (isOnlyAvailability) {
+      const updated = await User.findById(auth.userId).select('fullName email phoneNumber bio location pricePerSession danceStyles profileImage role approvalStatus');
+      if (!updated) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
       return NextResponse.json({
         success: true,
@@ -157,7 +154,7 @@ export async function PUT(request: NextRequest) {
           danceStyles: updated.danceStyles || [],
           profileImage: updated.profileImage || '',
           approvalStatus: updated.approvalStatus || undefined,
-          availabilityTimes: updated.availabilities || [],
+          availabilityTimes: sanitizedAvailability || [],
         },
       }, { status: 200 });
     }
@@ -175,27 +172,12 @@ export async function PUT(request: NextRequest) {
     user.pricePerSession = Number.isFinite(pricePerSession) ? Number(pricePerSession) : user.pricePerSession;
     user.danceStyles = Array.isArray(danceStyles) ? danceStyles : user.danceStyles;
     user.profileImage = profileImage ?? user.profileImage;
-    if (availabilityTimes !== undefined) {
-      const normalized = Array.isArray(availabilityTimes) ? availabilityTimes : [];
-      const sanitized = normalized
-        .filter((d: any) => d && typeof d.date === 'string' && d.date.length > 0)
-        .map((d: any) => ({
-          date: String(d.date).trim(),
-          timeSlots: Array.isArray(d.timeSlots)
-            ? d.timeSlots
-                .filter((s: any) => s && typeof s.time === 'string' && s.time.length > 0)
-                .map((s: any) => ({
-                  time: String(s.time).trim(),
-                  duration: Number(s.duration) || 60,
-                }))
-            : [],
-        }));
-      user.availabilities = sanitized;
-      user.markModified('availabilities');
-    }
 
     // Only update videos if they were explicitly provided in the request
     if (Array.isArray(videos)) {
+      if (videos.length > MAX_VIDEOS) {
+        return NextResponse.json({ error: `Maximum ${MAX_VIDEOS} videos allowed` }, { status: 400 });
+      }
       const normalizedVideos = videos.map((video: any) => ({
         id: String(video.id || Date.now()),
         url: String(video.url || ''),
@@ -224,6 +206,9 @@ export async function PUT(request: NextRequest) {
 
     await user.save();
 
+    // Fetch latest availability for the full response
+    const currentAvailability = await Availability.find({ choreographerId: auth.userId }).select('date timeSlots -_id');
+
     return NextResponse.json(
       {
         success: true,
@@ -237,7 +222,7 @@ export async function PUT(request: NextRequest) {
           danceStyles: user.danceStyles || [],
           profileImage: user.profileImage || '',
           approvalStatus: user.approvalStatus || undefined,
-          availabilityTimes: resolveAvailability(user.availabilities),
+          availabilityTimes: currentAvailability,
           videos: (user.danceVideos || []).map((video: any) => ({
             id: video.id,
             url: video.url,

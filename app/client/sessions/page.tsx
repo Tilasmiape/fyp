@@ -7,7 +7,10 @@ interface ReservationItem {
   id: string;
   date: string;
   time: string;
-  status: 'accepted' | 'rejected' | 'cancelled';
+  status: 'pending' | 'accepted' | 'rejected' | 'cancelled';
+  sessionCategory: 'individual' | 'group';
+  participantCount: number;
+  notes?: string;
   total: number;
   choreographer: {
     id: string;
@@ -64,8 +67,9 @@ export default function ClientSessionsPage() {
     load();
   }, [userRole]);
 
+  const requested = reservations.filter(r => r.status === 'pending');
   const upcoming = reservations.filter(r => r.status === 'accepted');
-  const past = reservations.filter(r => r.status === 'cancelled');
+  const past = reservations.filter(r => r.status === 'rejected' || r.status === 'cancelled');
 
   return (
     <div className="sessions-root">
@@ -124,38 +128,61 @@ export default function ClientSessionsPage() {
           <div style={{ fontFamily: 'Playfair Display, serif', fontSize: '22px' }}>The Movement Log</div>
         </div>
 
-        <div className="section-title">Upcoming Sessions</div>
+        <div className="section-title">Pending Requests</div>
         {loading ? (
           <div className="empty">Loading sessions...</div>
         ) : error ? (
           <div className="empty">{error}</div>
-        ) : upcoming.length === 0 ? (
-          <div className="empty">No upcoming sessions yet.</div>
+        ) : requested.length === 0 ? (
+          <div className="empty">No pending requests.</div>
         ) : (
-          upcoming.map(r => (
-            <div key={r.id} className="card" style={{ marginBottom: '14px' }}>
+          requested.map(r => (
+            <div key={r.id} className="card" style={{ marginBottom: '14px', borderLeft: '4px solid #f4b63a' }}>
               <div className="card-left">
                 <div className="avatar">{r.choreographer.profileImage && <img src={r.choreographer.profileImage} alt={r.choreographer.name} />}</div>
                 <div>
-                  <div className="label">Bollywood Class</div>
+                  <div className="label">{r.sessionCategory === 'group' ? `Group (${r.participantCount} people)` : 'Individual'} Session</div>
                   <div className="name">{r.choreographer.name}</div>
                   <div className="meta">{r.date} | {r.time}</div>
+                  {r.notes && <div className="meta" style={{ fontStyle: 'italic' }}>"{r.notes}"</div>}
                 </div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div className="status">{r.status}</div>
+                <div className="status" style={{ background: '#fff7ed', color: '#c2410c' }}>Requested</div>
                 <div className="price" style={{ marginTop: '6px' }}>NPR {r.total.toLocaleString()}</div>
               </div>
             </div>
           ))
         )}
 
-        <div className="section-title">Past Sessions & Feedback</div>
+        <div className="section-title">Upcoming Sessions</div>
+        {loading ? null : upcoming.length === 0 ? (
+          <div className="empty">No upcoming sessions yet.</div>
+        ) : (
+          upcoming.map(r => (
+            <div key={r.id} className="card" style={{ marginBottom: '14px', borderLeft: '4px solid #10b981' }}>
+              <div className="card-left">
+                <div className="avatar">{r.choreographer.profileImage && <img src={r.choreographer.profileImage} alt={r.choreographer.name} />}</div>
+                <div>
+                  <div className="label">{r.sessionCategory === 'group' ? `Group (${r.participantCount} people)` : 'Individual'} Session</div>
+                  <div className="name">{r.choreographer.name}</div>
+                  <div className="meta">{r.date} | {r.time}</div>
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div className="status" style={{ background: '#ecfdf5', color: '#047857' }}>Confirmed</div>
+                <div className="price" style={{ marginTop: '6px' }}>NPR {r.total.toLocaleString()}</div>
+              </div>
+            </div>
+          ))
+        )}
+
+        <div className="section-title">Past / Rejected Sessions</div>
         {past.length === 0 ? (
-          <div className="empty">No completed sessions yet.</div>
+          <div className="empty">No past sessions yet.</div>
         ) : (
           past.map(r => (
-            <div key={r.id} className="card" style={{ marginBottom: '14px' }}>
+            <div key={r.id} className="card" style={{ marginBottom: '14px', opacity: 0.7 }}>
               <div className="card-left">
                 <div className="avatar">{r.choreographer.profileImage && <img src={r.choreographer.profileImage} alt={r.choreographer.name} />}</div>
                 <div>
@@ -165,7 +192,7 @@ export default function ClientSessionsPage() {
                 </div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div className="status">Completed</div>
+                <div className="status" style={{ background: '#f1f2f7', color: '#6b7280' }}>{r.status === 'rejected' ? 'Rejected' : 'Cancelled'}</div>
                 <div className="price" style={{ marginTop: '6px' }}>NPR {r.total.toLocaleString()}</div>
               </div>
             </div>

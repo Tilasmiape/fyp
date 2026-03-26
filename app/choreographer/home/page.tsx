@@ -10,10 +10,15 @@ interface Booking {
   clientName: string;
   date: string;
   time: string;
+  duration?: number;
   status: 'pending' | 'accepted' | 'rejected' | 'completed' | 'cancelled';
   danceStyle: string;
   sessionType: string;
   location?: string;
+  sessionCategory?: 'individual' | 'group';
+  participantCount?: number;
+  notes?: string;
+  total?: number;
   decisionReason?: string;
 }
 
@@ -157,10 +162,15 @@ export default function ChoreographerHome() {
           clientName: r.client?.name || 'Client',
           date: r.date,
           time: r.time,
+          duration: r.duration || 60,
           status: r.status as Booking['status'],
           danceStyle: 'Session',
           sessionType: r.sessionType,
           location: r.location || '',
+          sessionCategory: r.sessionCategory || 'individual',
+          participantCount: r.participantCount || 1,
+          notes: r.notes || '',
+          total: r.total || 0,
           decisionReason: r.decisionReason || '',
         })));
       } catch (error: any) {
@@ -1122,14 +1132,20 @@ export default function ChoreographerHome() {
                 ) : (
                   filteredBookings.map(b => (
                     <div key={b.id} className="booking-card">
-                      <div>
+                      <div style={{ flex: 1 }}>
                         <div className="booking-name">{b.clientName}</div>
                         <div className="booking-meta">
                           <span>📅 {b.date}</span>
                           <span>🕐 {b.time}</span>
-                          <span>💃 {b.danceStyle}</span>
+                          <span>⏱️ {b.duration}min</span>
+                          <span>💃 {b.sessionCategory === 'group' ? `Group (${b.participantCount} people)` : 'Individual'}</span>
                           <span>📍 {b.sessionType === 'in-house' ? b.location : 'Studio'}</span>
                         </div>
+                        {b.notes && (
+                          <div className="booking-meta" style={{ marginTop: '8px', color: 'rgba(255,255,255,0.6)', fontSize: '13px' }}>
+                            💬 Notes: {b.notes}
+                          </div>
+                        )}
                         {b.decisionReason && b.status !== 'pending' && (
                           <div className="booking-meta" style={{ marginTop: '6px', color: 'rgba(255,255,255,0.55)' }}>
                             Reason: {b.decisionReason}

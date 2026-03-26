@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 import { connectDB } from '@/lib/db';
 import User from '@/models/User';
+import Availability from '@/models/Availability';
 import { getAvailabilityForDate } from '@/lib/availability';
 import Reservation from '@/models/Reservation';
+import Notification from '@/models/Notification';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-key-change-in-prod';
 
@@ -32,29 +34,71 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { choreographerId, date, time, duration, sessionType, location } = body || {};
+    const {
+      choreographerId,
+      date,
+      time,
+      duration,
+      sessionType,
+      location,
+      sessionCategory = 'individual',
+      participantCount = 1,
+      notes = '',
+    } = body || {};
 
     if (!choreographerId || !date || !time || !sessionType) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
+    if (sessionCategory === 'group' && (!participantCount || participantCount < 2)) {
+      return NextResponse.json(
+        { error: 'Group sessions must have at least 2 participants' },
+        { status: 400 }
+      );
+    }
+
     await connectDB();
-    const choreographer = await User.findOne({ _id: choreographerId, role: 'choreographer' }).select('_id pricePerSession availability');
+    const choreographer = await User.findOne({ _id: choreographerId, role: 'choreographer' }).select(
+      '_id pricePerSession groupSessionPriceMultiplier'
+    );
     if (!choreographer) {
       return NextResponse.json({ error: 'Choreographer not found' }, { status: 404 });
     }
 
-    const allowedTimes = getAvailabilityForDate(choreographer.availability || [], String(date));
     const selectedTime = String(time);
     const selectedDuration = Number(duration) || 60;
-    const isTimeAvailable = allowedTimes.some(slot => slot.time === selectedTime && slot.duration === selectedDuration);
-    if (!isTimeAvailable) {
-      return NextResponse.json({ error: 'Selected time slot is not available' }, { status: 400 });
+
+    // Fetch availability from separate collection
+    const choreographerAvailabilities = await Availability.find({ choreographerId }).select('date timeSlots -_id');
+    const dateAvailability = choreographerAvailabilities.find((a: any) => a.date === date);
+    const hasPresetSlots = dateAvailability && dateAvailability.timeSlots && dateAvailability.timeSlots.length > 0;
+
+    if (hasPresetSlots) {
+      // Require selection from preset slots
+      const allowedTimes = getAvailabilityForDate(choreographerAvailabilities as any || [], String(date));
+      const isTimeAvailable = allowedTimes.some(
+        (slot) => slot.time === selectedTime && slot.duration === selectedDuration
+      );
+      if (!isTimeAvailable) {
+        return NextResponse.json(
+          { error: 'Selected time slot is not available. Please choose from available time slots.' },
+          { status: 400 }
+        );
+      }
+    } else {
+      // Custom time - validate time format and duration
+      if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(selectedTime)) {
+        return NextResponse.json({ error: 'Invalid time format. Use HH:MM format.' }, { status: 400 });
+      }
+      if (selectedDuration < 30 || selectedDuration > 120) {
+        return NextResponse.json(
+          { error: 'Duration must be between 30 and 120 minutes' },
+          { status: 400 }
+        );
+      }
     }
 
-    const pricePerSession = Number(choreographer.pricePerSession || 0);
-    const total = pricePerSession + 50;
-
+    // Check for time slot conflicts
     const conflict = await Reservation.findOne({
       choreographerId,
       date: String(date),
@@ -67,6 +111,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Time slot is already booked' }, { status: 409 });
     }
 
+    // Calculate pricing with group multiplier
+    const pricePerSession = Number(choreographer.pricePerSession || 0);
+    let multiplier = 1;
+    if (sessionCategory === 'group') {
+      multiplier = Number(choreographer.groupSessionPriceMultiplier || 1.3);
+    }
+    const total = Math.round((pricePerSession * multiplier + 50) * 100) / 100;
+
     const reservation = await Reservation.create({
       clientId: payload.userId,
       choreographerId,
@@ -75,9 +127,25 @@ export async function POST(request: NextRequest) {
       duration: selectedDuration,
       sessionType,
       location: sessionType === 'in-house' ? String(location || '') : '',
+      sessionCategory,
+      participantCount: sessionCategory === 'group' ? Number(participantCount) : 1,
+      notes: String(notes || '').trim(),
       pricePerSession,
+      groupSessionMultiplier: multiplier,
       total,
       status: 'pending',
+    });
+
+    // Create notification for choreographer
+    const sessionTypeLabel = sessionCategory === 'group' ? `Group Session (${participantCount} participants)` : 'Individual Session';
+    const notificationMessage = `New ${sessionTypeLabel} request for ${date} at ${time}`;
+
+    await Notification.create({
+      userId: choreographerId,
+      type: 'session-requested',
+      title: 'New Session Request',
+      message: notificationMessage,
+      reservationId: reservation._id,
     });
 
     return NextResponse.json({ success: true, reservationId: reservation._id }, { status: 201 });

@@ -21,6 +21,7 @@ interface Choreographer {
   bio?: string;
   location?: string;
   pricePerSession: number;
+  groupSessionPriceMultiplier?: number;
   danceStyles: string[];
   profileImage?: string;
   approvalStatus?: 'pending' | 'approved' | 'rejected';
@@ -76,6 +77,12 @@ export default function ClientDashboard() {
   const [showNotificationPopup, setShowNotificationPopup] = useState(false);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'collective' | 'favorites'>('collective');
+  const [sessionCategory, setSessionCategory] = useState<'individual' | 'group'>('individual');
+  const [participantCount, setParticipantCount] = useState(2);
+  const [customTime, setCustomTime] = useState('');
+  const [customDuration, setCustomDuration] = useState(60);
+  const [notes, setNotes] = useState('');
+  const [hasPresetSlots, setHasPresetSlots] = useState(false);
   const reservedSet = useMemo(() => new Set(reservedTimes), [reservedTimes]);
   const timeSlots = useMemo(() => {
     if (!reserveFor || !reserveDate) return [];
@@ -151,18 +158,48 @@ export default function ClientDashboard() {
     setReserveError('');
     setAvailabilityError('');
     setReservedTimes([]);
+    setSessionCategory('individual');
+    setParticipantCount(2);
+    setCustomTime('');
+    setCustomDuration(60);
+    setNotes('');
+    setHasPresetSlots(false);
     setReserveOpen(true);
   };
 
   const submitReservation = async () => {
     if (!reserveFor) return;
     if (!reserveDate) { setReserveError('Please select a date.'); return; }
-    if (!reserveTime) { setReserveError('Please select a time.'); return; }
-    if (reservedSet.has(reserveTime)) { setReserveError('Selected time is no longer available.'); return; }
+    
+    let timeString = '';
+    let duration = 60;
+    
+    if (hasPresetSlots) {
+      if (!reserveTime) { setReserveError('Please select a time slot.'); return; }
+      const slot = (reserveFor.availabilityTimes?.find(a => a.date === reserveDate)?.timeSlots || []).find(s => s.time === reserveTime);
+      timeString = reserveTime;
+      duration = slot?.duration || 60;
+      if (reservedSet.has(timeString)) { setReserveError('Selected time is no longer available.'); return; }
+    } else {
+      if (!customTime) { setReserveError('Please enter a time.'); return; }
+      if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(customTime)) {
+        setReserveError('Invalid time format. Use HH:MM format.');
+        return;
+      }
+      timeString = customTime;
+      duration = customDuration;
+    }
+
+    if (sessionCategory === 'group' && participantCount < 2) {
+      setReserveError('Group sessions require at least 2 participants.');
+      return;
+    }
+    
     if (reserveType === 'in-house' && !reserveLocation.trim()) {
       setReserveError('Please add your location for in-house sessions.');
       return;
     }
+    
     setReserveLoading(true);
     setReserveError('');
     try {
@@ -172,9 +209,13 @@ export default function ClientDashboard() {
         body: JSON.stringify({
           choreographerId: reserveFor.id,
           date: reserveDate,
-          time: reserveTime,
+          time: timeString,
+          duration,
           sessionType: reserveType,
           location: reserveType === 'in-house' ? reserveLocation.trim() : '',
+          sessionCategory,
+          participantCount: sessionCategory === 'group' ? participantCount : 1,
+          notes: notes.trim(),
         }),
       });
       const data = await res.json();
@@ -182,6 +223,7 @@ export default function ClientDashboard() {
         throw new Error(data?.error || 'Failed to reserve');
       }
       setReserveOpen(false);
+      alert('Reservation request submitted successfully!');
     } catch (err: any) {
       setReserveError(err.message || 'Failed to reserve');
     } finally {
@@ -337,8 +379,14 @@ export default function ClientDashboard() {
         setReservedTimes([]);
         setAvailabilityError('');
         setAvailabilityLoading(false);
+        setHasPresetSlots(false);
         return;
       }
+      
+      const dateEntry = reserveFor.availabilityTimes?.find(a => a.date === reserveDate);
+      const preset = !!(dateEntry && dateEntry.timeSlots && dateEntry.timeSlots.length > 0);
+      setHasPresetSlots(preset);
+      
       setAvailabilityLoading(true);
       setAvailabilityError('');
       try {
@@ -831,7 +879,30 @@ export default function ClientDashboard() {
         }
         .summary-row { display: flex; justify-content: space-between; font-size: 11px; color: rgba(255,255,255,0.7); }
         .summary-total { font-size: 20px; font-weight: 800; margin-top: 6px; }
+        .summary-highlight { background: rgba(244, 182, 58, 0.1); padding: 10px; border-radius: 12px; margin-top: 12px; border: 1px solid rgba(244, 182, 58, 0.3); }
         .error-text { color: #b91c1c; font-size: 12px; margin-top: 10px; }
+        .toggle-group {
+          display: flex;
+          gap: 10px;
+          margin-bottom: 12px;
+        }
+        .toggle-btn {
+          flex: 1;
+          padding: 10px;
+          border: 1px solid #e7e9f0;
+          border-radius: 12px;
+          background: #f8fafc;
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .toggle-btn.active {
+          background: #111827;
+          color: #fff;
+          border-color: #111827;
+        }
+        .group-info { background: rgba(244, 182, 58, 0.05); padding: 12px; border-radius: 12px; border-left: 3px solid #f4b63a; font-size: 12px; color: #664d03; margin-top: 8px; }
         .btn.primary:hover {
           background: #1f2937;
         }
@@ -1069,74 +1140,44 @@ export default function ClientDashboard() {
             </div>
 
             <div className="modal-field">
-              <label className="modal-label">1. Session Date</label>
-              {reserveFor.availabilityTimes && reserveFor.availabilityTimes.length > 0 ? (
-                <select
-                  className="input"
-                  value={reserveDate}
-                  onChange={(e) => {
-                    setReserveDate(e.target.value);
-                    setReserveTime('');
-                    setReserveError('');
-                    setAvailabilityError('');
-                  }}
+              <label className="modal-label">1. Session Type</label>
+              <div className="toggle-group">
+                <button 
+                  className={`toggle-btn ${sessionCategory === 'individual' ? 'active' : ''}`}
+                  onClick={() => setSessionCategory('individual')}
                 >
-                  <option value="">Select a date</option>
-                  {reserveFor.availabilityTimes
-                    .filter(dateEntry => new Date(dateEntry.date) >= new Date(new Date().setHours(0,0,0,0)))
-                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-                    .map(dateEntry => (
-                      <option key={dateEntry.date} value={dateEntry.date}>
-                        {new Date(dateEntry.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-                        {' '}({dateEntry.timeSlots.length} slots)
-                      </option>
-                    ))}
-                </select>
-              ) : (
-                <div style={{ padding: '12px', backgroundColor: '#fee2e2', borderRadius: '8px', color: '#b91c1c', fontSize: '13px' }}>
-                  No available dates. The choreographer hasn't set their availability yet.
+                  Individual
+                </button>
+                <button 
+                  className={`toggle-btn ${sessionCategory === 'group' ? 'active' : ''}`}
+                  onClick={() => setSessionCategory('group')}
+                >
+                  Group
+                </button>
+              </div>
+              {sessionCategory === 'group' && (
+                <div>
+                  <label className="modal-label" style={{ marginTop: 12 }}>Number of Participants</label>
+                  <input 
+                    type="number" 
+                    className="input" 
+                    min="2" 
+                    max="100"
+                    value={participantCount}
+                    onChange={(e) => setParticipantCount(Math.max(2, parseInt(e.target.value) || 2))}
+                  />
+                  <div className="group-info">
+                    💡 Group sessions are {Math.round(((reserveFor.groupSessionPriceMultiplier || 1.3) - 1) * 100)}% more expensive
+                  </div>
                 </div>
               )}
             </div>
 
             <div className="modal-field">
-              <label className="modal-label">2. Artist Availability</label>
-              {availabilityLoading && <div className="helper-text">Checking availability...</div>}
-              {availabilityError && <div className="error-text">{availabilityError}</div>}
-              {!reserveDate ? (
-                <div className="helper-text">Please select a date first.</div>
-              ) : timeSlots.length === 0 ? (
-                <div className="helper-text">No available slots for this date.</div>
-              ) : (
-                <div className="time-grid">
-                  {timeSlots.map(slot => {
-                    const t = slot.time;
-                    const duration = slot.duration;
-                    const isReserved = reservedSet.has(t);
-                    return (
-                      <button
-                        key={`${t}-${duration}`}
-                        className={`time-btn ${reserveTime === t ? 'active' : ''} ${isReserved ? 'disabled' : ''}`}
-                        onClick={() => setReserveTime(t)}
-                        disabled={isReserved}
-                        title={isReserved ? 'Already booked' : 'Select time'}
-                      >
-                        {t}
-                        <div style={{ fontSize: '10px', opacity: 0.7, marginTop: '2px', fontWeight: 'normal' }}>
-                          {duration} min
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <div className="modal-field">
-              <label className="modal-label">3. Session Type</label>
+              <label className="modal-label">2. Session Location</label>
               <div style={{ display: 'flex', gap: '10px' }}>
-                <button className={`time-btn ${reserveType === 'studio' ? 'active' : ''}`} onClick={() => setReserveType('studio')}>Studio</button>
-                <button className={`time-btn ${reserveType === 'in-house' ? 'active' : ''}`} onClick={() => setReserveType('in-house')}>In-House</button>
+                <button className={`toggle-btn ${reserveType === 'studio' ? 'active' : ''}`} onClick={() => setReserveType('studio')}>Studio</button>
+                <button className={`toggle-btn ${reserveType === 'in-house' ? 'active' : ''}`} onClick={() => setReserveType('in-house')}>In-House</button>
               </div>
               {reserveType === 'in-house' && (
                 <input
@@ -1150,16 +1191,143 @@ export default function ClientDashboard() {
               )}
             </div>
 
+            <div className="modal-field">
+              <label className="modal-label">3. Session Date</label>
+              <input 
+                type="date"
+                className="input"
+                value={reserveDate}
+                onChange={(e) => {
+                  setReserveDate(e.target.value);
+                  setReserveTime('');
+                  setCustomTime('');
+                  setReserveError('');
+                  setAvailabilityError('');
+                }}
+                min={new Date().toISOString().split('T')[0]}
+              />
+              
+              {reserveFor.availabilityTimes && reserveFor.availabilityTimes.length > 0 && (
+                <div style={{ marginTop: '12px' }}>
+                  <label className="modal-label" style={{ fontSize: '9px', color: '#f4b63a', marginBottom: '4px' }}>
+                    💡 Choreographer's Preferred Dates
+                  </label>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
+                    {reserveFor.availabilityTimes
+                      .filter(dateEntry => new Date(dateEntry.date) >= new Date(new Date().setHours(0,0,0,0)))
+                      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                      .map(dateEntry => (
+                        <button
+                          key={dateEntry.date}
+                          type="button"
+                          className={`toggle-btn ${reserveDate === dateEntry.date ? 'selected-pref' : ''}`}
+                          style={{ 
+                            fontSize: '10px', 
+                            padding: '6px 10px', 
+                            flex: 'none',
+                            backgroundColor: reserveDate === dateEntry.date ? '#f4b63a' : '#f8fafc',
+                            color: reserveDate === dateEntry.date ? '#fff' : '#64748b',
+                            borderColor: reserveDate === dateEntry.date ? '#f4b63a' : '#e7e9f0',
+                            borderRadius: '8px',
+                            fontWeight: '600',
+                            cursor: 'pointer'
+                          }}
+                          onClick={() => {
+                            setReserveDate(dateEntry.date);
+                            setReserveTime('');
+                            setCustomTime('');
+                            setReserveError('');
+                            setAvailabilityError('');
+                          }}
+                        >
+                          {new Date(dateEntry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {hasPresetSlots ? (
+              <div className="modal-field">
+                <label className="modal-label">4. Artist Availability</label>
+                {availabilityLoading && <div className="helper-text">Checking availability...</div>}
+                {availabilityError && <div className="error-text">{availabilityError}</div>}
+                {!reserveDate ? (
+                  <div className="helper-text">Please select a date first.</div>
+                ) : timeSlots.length === 0 ? (
+                  <div className="helper-text">No available slots for this date.</div>
+                ) : (
+                  <div className="time-grid">
+                    {timeSlots.map(slot => {
+                      const t = slot.time;
+                      const duration = slot.duration;
+                      const isReserved = reservedSet.has(t);
+                      return (
+                        <button
+                          key={`${t}-${duration}`}
+                          className={`time-btn ${reserveTime === t ? 'active' : ''} ${isReserved ? 'disabled' : ''}`}
+                          onClick={() => setReserveTime(t)}
+                          disabled={isReserved}
+                          title={isReserved ? 'Already booked' : 'Select time'}
+                        >
+                          {t}
+                          <div style={{ fontSize: '10px', opacity: 0.7, marginTop: '2px', fontWeight: 'normal' }}>
+                            {duration} min
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="modal-field">
+                <label className="modal-label">4. Custom Time & Duration</label>
+                <input 
+                  type="time"
+                  className="input"
+                  value={customTime}
+                  onChange={(e) => setCustomTime(e.target.value)}
+                />
+                <div style={{ marginTop: 10 }}>
+                  <label className="modal-label">Duration</label>
+                  <select className="input" value={customDuration} onChange={(e) => setCustomDuration(parseInt(e.target.value))}>
+                    <option value={30}>30 minutes</option>
+                    <option value={60}>1 hour</option>
+                    <option value={90}>1.5 hours</option>
+                    <option value={120}>2 hours</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            <div className="modal-field">
+              <label className="modal-label">5. Additional Notes</label>
+              <textarea 
+                className="input"
+                style={{ minHeight: 60, fontFamily: 'inherit', resize: 'vertical' }}
+                placeholder="Any special requests..."
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+            </div>
+
             <div className="summary">
               <div className="summary-row">
-                <span>Private Session</span>
-                <span>NPR {reserveFor.pricePerSession.toLocaleString()}</span>
+                <span>{sessionCategory === 'individual' ? 'Individual' : `Group (${participantCount} people)`} Session</span>
+                <span>NPR {(reserveFor.pricePerSession * (sessionCategory === 'group' ? (reserveFor.groupSessionPriceMultiplier || 1.3) : 1)).toLocaleString()}</span>
               </div>
               <div className="summary-row" style={{ marginTop: '6px' }}>
                 <span>Studio Access Fee</span>
                 <span>NPR 50</span>
               </div>
-              <div className="summary-total">NPR {(reserveFor.pricePerSession + 50).toLocaleString()}</div>
+              {sessionCategory === 'group' && (
+                <div className="summary-highlight">
+                  Group Rate: {Math.round(((reserveFor.groupSessionPriceMultiplier || 1.3) - 1) * 100)}% premium applied
+                </div>
+              )}
+              <div className="summary-total">NPR {(Math.round((reserveFor.pricePerSession * (sessionCategory === 'group' ? (reserveFor.groupSessionPriceMultiplier || 1.3) : 1) + 50) * 100) / 100).toLocaleString()}</div>
             </div>
 
             {reserveError && <div className="error-text">{reserveError}</div>}
