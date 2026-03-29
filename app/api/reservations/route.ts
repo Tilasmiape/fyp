@@ -6,6 +6,7 @@ import Availability from '@/models/Availability';
 import { getAvailabilityForDate } from '@/lib/availability';
 import Reservation from '@/models/Reservation';
 import Notification from '@/models/Notification';
+import { acquireSLock, acquireXLock, releaseSLock, releaseXLock } from '@/lib/locks';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-key-change-in-prod';
 
@@ -98,18 +99,26 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check for time slot conflicts
-    const conflict = await Reservation.findOne({
-      choreographerId,
-      date: String(date),
-      time: String(time),
-      duration: selectedDuration,
-      status: { $nin: ['rejected', 'cancelled'] },
-    }).select('_id');
-
-    if (conflict) {
-      return NextResponse.json({ error: 'Time slot is already booked' }, { status: 409 });
+    const lockKey = `slot:${choreographerId}:${date}:${selectedTime}:${selectedDuration}`;
+    const lockOwner = `${payload.userId}:${Date.now()}`;
+    const gotXLock = await acquireXLock(lockKey, lockOwner);
+    if (!gotXLock) {
+      return NextResponse.json({ error: 'Time slot is currently being booked. Please try again.' }, { status: 409 });
     }
+
+    try {
+      // Check for time slot conflicts
+      const conflict = await Reservation.findOne({
+        choreographerId,
+        date: String(date),
+        time: String(time),
+        duration: selectedDuration,
+        status: { $nin: ['rejected', 'cancelled'] },
+      }).select('_id');
+
+      if (conflict) {
+        return NextResponse.json({ error: 'Time slot is already booked' }, { status: 409 });
+      }
 
     // Calculate pricing with group multiplier
     const pricePerSession = Number(choreographer.pricePerSession || 0);
@@ -148,7 +157,10 @@ export async function POST(request: NextRequest) {
       reservationId: reservation._id,
     });
 
-    return NextResponse.json({ success: true, reservationId: reservation._id }, { status: 201 });
+      return NextResponse.json({ success: true, reservationId: reservation._id }, { status: 201 });
+    } finally {
+      await releaseXLock(lockKey, lockOwner);
+    }
   } catch (error: any) {
     console.error('Create reservation error:', error);
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
@@ -179,14 +191,24 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
       }
 
-      const reservations = await Reservation.find({
+      const sKey = `availability:${choreographerId}:${date}`;
+      const gotSLock = await acquireSLock(sKey);
+      if (!gotSLock) {
+        return NextResponse.json({ error: 'Availability is being updated. Please try again.' }, { status: 409 });
+      }
+
+      try {
+        const reservations = await Reservation.find({
         choreographerId,
         date: String(date),
         status: { $nin: ['rejected', 'cancelled'] },
-      }).select('time duration');
+        }).select('time duration');
 
-      const reservedTimes = Array.from(new Set(reservations.map((r: any) => r.time))).sort();
-      return NextResponse.json({ success: true, reservedTimes }, { status: 200 });
+        const reservedTimes = Array.from(new Set(reservations.map((r: any) => r.time))).sort();
+        return NextResponse.json({ success: true, reservedTimes }, { status: 200 });
+      } finally {
+        await releaseSLock(sKey);
+      }
     }
 
     if (payload.role !== 'client') {
@@ -218,4 +240,3 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
   }
 }
-

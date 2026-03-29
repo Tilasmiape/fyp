@@ -105,6 +105,23 @@ export default function ClientDashboard() {
     () => notifications.filter(n => !n.read).length,
     [notifications]
   );
+  const latestUnreadKey = useMemo(() => {
+    const unread = notifications.filter(n => !n.read);
+    if (unread.length === 0) return '';
+    const latest = unread.reduce((acc, n) => {
+      const t = new Date(n.createdAt).getTime();
+      const accT = acc ? new Date(acc.createdAt).getTime() : 0;
+      return t > accT ? n : acc;
+    }, unread[0]);
+    return `${latest.id}:${latest.createdAt}`;
+  }, [notifications]);
+
+  const markNotificationsRead = async () => {
+    try {
+      await fetch('/api/notifications', { method: 'PATCH' });
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    } catch {}
+  };
 
   const parseSessionDateTime = (dateStr: string, timeStr: string) => {
     if (!dateStr || !timeStr) return null;
@@ -294,12 +311,13 @@ export default function ClientDashboard() {
     if (!userId) return;
     if (unreadCount === 0 && reminderNotifications.length === 0) return;
     const key = `clientNotificationsPopupShown:${userId}`;
-    const alreadyShown = sessionStorage.getItem(key);
-    if (!alreadyShown) {
+    const lastKey = sessionStorage.getItem(key);
+    const currentKey = latestUnreadKey || `reminders:${reminderNotifications.length}`;
+    if (currentKey && lastKey !== currentKey) {
       setShowNotificationPopup(true);
-      sessionStorage.setItem(key, '1');
+      sessionStorage.setItem(key, currentKey);
     }
-  }, [userId, unreadCount, reminderNotifications.length]);
+  }, [userId, unreadCount, reminderNotifications.length, latestUnreadKey]);
 
   useEffect(() => {
     const loadReminders = async () => {
@@ -798,26 +816,35 @@ export default function ClientDashboard() {
           color: #fff;
           border-color: var(--navy);
         }
-        .modal {
+        .reservation-backdrop {
           position: fixed;
-          inset: 0;
-          background: rgba(15,23,42,0.7);
+          top: 0;
+          left: 0;
+          width: 100vw;
+          height: 100vh;
+          background: rgba(15, 23, 42, 0.85);
+          backdrop-filter: blur(12px);
           display: grid;
           place-items: center;
-          min-height: 100vh;
-          z-index: 50;
-          padding: 20px;
-        }
-        .modal-card {
-          width: min(420px, 92vw);
-          background: #fff;
-          border-radius: 28px;
+          z-index: 9999;
           padding: 24px;
-          box-shadow: 0 30px 70px rgba(0,0,0,0.35);
-          position: relative;
-          margin: 0 auto;
+          overflow-y: auto;
         }
-        .modal-close {
+        .reservation-modal-card {
+          width: min(600px, 95vw);
+          background: #fff;
+          border-radius: 32px;
+          padding: 32px;
+          box-shadow: 0 40px 100px rgba(0, 0, 0, 0.5);
+          position: relative;
+          margin: auto;
+          animation: modalAppear 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        @keyframes modalAppear {
+          from { transform: scale(0.95) translateY(20px); opacity: 0; }
+          to { transform: scale(1) translateY(0); opacity: 1; }
+        }
+        .reservation-modal-close {
           position: absolute;
           top: 14px;
           right: 14px;
@@ -827,13 +854,18 @@ export default function ClientDashboard() {
           border: 1px solid #e7e9f0;
           background: #f8fafc;
           cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 700;
+          z-index: 10;
         }
-        .modal-title {
+        .reservation-modal-title {
           font-family: 'Playfair Display', serif;
           font-size: 22px;
           margin: 0 0 4px;
         }
-        .modal-sub {
+        .reservation-modal-sub {
           font-size: 11px;
           text-transform: uppercase;
           letter-spacing: 2px;
@@ -841,7 +873,7 @@ export default function ClientDashboard() {
           font-weight: 700;
         }
         .modal-field { margin-top: 18px; }
-        .modal-label {
+        .reservation-modal-label {
           font-size: 10px;
           letter-spacing: 2px;
           text-transform: uppercase;
@@ -850,7 +882,12 @@ export default function ClientDashboard() {
           margin-bottom: 8px;
           display: block;
         }
-        .time-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .time-grid { 
+          display: grid; 
+          grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); 
+          gap: 12px; 
+          margin-top: 12px;
+        }
         .time-btn {
           border: 1px solid #edf1f7;
           background: #f8fafc;
@@ -871,14 +908,28 @@ export default function ClientDashboard() {
         }
         .helper-text { font-size: 11px; color: #64748b; margin-top: 6px; }
         .summary {
-          margin-top: 18px;
-          padding: 16px;
-          border-radius: 18px;
-          background: #0b1220;
+          margin-top: 24px;
+          padding: 24px;
+          border-radius: 24px;
+          background: #0f172a;
           color: #fff;
+          box-shadow: 0 10px 25px rgba(15, 23, 42, 0.2);
         }
-        .summary-row { display: flex; justify-content: space-between; font-size: 11px; color: rgba(255,255,255,0.7); }
-        .summary-total { font-size: 20px; font-weight: 800; margin-top: 6px; }
+        .summary-row { 
+          display: flex; 
+          justify-content: space-between; 
+          font-size: 13px; 
+          color: rgba(255,255,255,0.7); 
+          margin-bottom: 8px;
+        }
+        .summary-total { 
+          font-size: 24px; 
+          font-weight: 800; 
+          margin-top: 12px; 
+          padding-top: 12px;
+          border-top: 1px solid rgba(255,255,255,0.1);
+          color: var(--accent);
+        }
         .summary-highlight { background: rgba(244, 182, 58, 0.1); padding: 10px; border-radius: 12px; margin-top: 12px; border: 1px solid rgba(244, 182, 58, 0.3); }
         .error-text { color: #b91c1c; font-size: 12px; margin-top: 10px; }
         .toggle-group {
@@ -1000,8 +1051,12 @@ export default function ClientDashboard() {
         </div>
         <div className="topbar-actions">
           <div className="nav-links">
-            <span>Home</span>
-            <span>Dashboard</span>
+            <span onClick={() => router.push('/client/home')} style={{ cursor: 'pointer' }}>Home</span>
+            <span onClick={() => router.push('/client/sessions')} style={{ cursor: 'pointer' }}>Sessions</span>
+            <span onClick={() => router.push('/client/notifications')} style={{ cursor: 'pointer' }}>Notifications</span>
+            <span onClick={() => router.push('/client/reviews')} style={{ cursor: 'pointer' }}>Reviews</span>
+            <span onClick={() => router.push('/client/scores')} style={{ cursor: 'pointer' }}>Scores</span>
+            <span onClick={() => router.push('/client/profile')} style={{ cursor: 'pointer' }}>Profile</span>
           </div>
           <div className="user-pill">
             <span>Hi, {userName}</span>
@@ -1023,7 +1078,9 @@ export default function ClientDashboard() {
               Notifications
               {unreadCount > 0 && <span className="notif-badge">{unreadCount}</span>}
             </button>
-            <button>Profile</button>
+            <button onClick={() => router.push('/client/reviews')}>Reviews</button>
+            <button onClick={() => router.push('/client/scores')}>Scores</button>
+            <button onClick={() => router.push('/client/profile')}>Profile</button>
           </div>
         </div>
 
@@ -1124,9 +1181,9 @@ export default function ClientDashboard() {
       </div>
 
       {reserveOpen && reserveFor && (
-        <div className="modal" onClick={() => setReserveOpen(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setReserveOpen(false)}>X</button>
+        <div className="reservation-backdrop" onClick={() => setReserveOpen(false)}>
+          <div className="reservation-modal-card" onClick={(e) => e.stopPropagation()}>
+            <button className="reservation-modal-close" onClick={() => setReserveOpen(false)}>X</button>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
               <div style={{ width: '44px', height: '44px', borderRadius: '12px', overflow: 'hidden', background: '#0f172a' }}>
                 {reserveFor.profileImage && (
@@ -1134,13 +1191,13 @@ export default function ClientDashboard() {
                 )}
               </div>
               <div>
-                <div className="modal-title">{reserveFor.name}</div>
-                <div className="modal-sub">Artist Reservation</div>
+                <div className="reservation-modal-title">{reserveFor.name}</div>
+                <div className="reservation-modal-sub">Artist Reservation</div>
               </div>
             </div>
 
-            <div className="modal-field">
-              <label className="modal-label">1. Session Type</label>
+            <div className="reservation-modal-field">
+              <label className="reservation-modal-label">1. Session Type</label>
               <div className="toggle-group">
                 <button 
                   className={`toggle-btn ${sessionCategory === 'individual' ? 'active' : ''}`}
@@ -1157,7 +1214,7 @@ export default function ClientDashboard() {
               </div>
               {sessionCategory === 'group' && (
                 <div>
-                  <label className="modal-label" style={{ marginTop: 12 }}>Number of Participants</label>
+                  <label className="reservation-modal-label" style={{ marginTop: 12 }}>Number of Participants</label>
                   <input 
                     type="number" 
                     className="input" 
@@ -1173,8 +1230,8 @@ export default function ClientDashboard() {
               )}
             </div>
 
-            <div className="modal-field">
-              <label className="modal-label">2. Session Location</label>
+            <div className="reservation-modal-field">
+              <label className="reservation-modal-label">2. Session Location</label>
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button className={`toggle-btn ${reserveType === 'studio' ? 'active' : ''}`} onClick={() => setReserveType('studio')}>Studio</button>
                 <button className={`toggle-btn ${reserveType === 'in-house' ? 'active' : ''}`} onClick={() => setReserveType('in-house')}>In-House</button>
@@ -1191,8 +1248,8 @@ export default function ClientDashboard() {
               )}
             </div>
 
-            <div className="modal-field">
-              <label className="modal-label">3. Session Date</label>
+            <div className="reservation-modal-field">
+              <label className="reservation-modal-label">3. Session Date</label>
               <input 
                 type="date"
                 className="input"
@@ -1209,7 +1266,7 @@ export default function ClientDashboard() {
               
               {reserveFor.availabilityTimes && reserveFor.availabilityTimes.length > 0 && (
                 <div style={{ marginTop: '12px' }}>
-                  <label className="modal-label" style={{ fontSize: '9px', color: '#f4b63a', marginBottom: '4px' }}>
+                  <label className="reservation-modal-label" style={{ fontSize: '9px', color: '#f4b63a', marginBottom: '4px' }}>
                     💡 Choreographer's Preferred Dates
                   </label>
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
@@ -1249,8 +1306,8 @@ export default function ClientDashboard() {
             </div>
 
             {hasPresetSlots ? (
-              <div className="modal-field">
-                <label className="modal-label">4. Artist Availability</label>
+              <div className="reservation-modal-field">
+                <label className="reservation-modal-label">4. Artist Availability</label>
                 {availabilityLoading && <div className="helper-text">Checking availability...</div>}
                 {availabilityError && <div className="error-text">{availabilityError}</div>}
                 {!reserveDate ? (
@@ -1282,8 +1339,8 @@ export default function ClientDashboard() {
                 )}
               </div>
             ) : (
-              <div className="modal-field">
-                <label className="modal-label">4. Custom Time & Duration</label>
+              <div className="reservation-modal-field">
+                <label className="reservation-modal-label">4. Custom Time & Duration</label>
                 <input 
                   type="time"
                   className="input"
@@ -1291,7 +1348,7 @@ export default function ClientDashboard() {
                   onChange={(e) => setCustomTime(e.target.value)}
                 />
                 <div style={{ marginTop: 10 }}>
-                  <label className="modal-label">Duration</label>
+                  <label className="reservation-modal-label">Duration</label>
                   <select className="input" value={customDuration} onChange={(e) => setCustomDuration(parseInt(e.target.value))}>
                     <option value={30}>30 minutes</option>
                     <option value={60}>1 hour</option>
@@ -1302,8 +1359,8 @@ export default function ClientDashboard() {
               </div>
             )}
 
-            <div className="modal-field">
-              <label className="modal-label">5. Additional Notes</label>
+            <div className="reservation-modal-field">
+              <label className="reservation-modal-label">5. Additional Notes</label>
               <textarea 
                 className="input"
                 style={{ minHeight: 60, fontFamily: 'inherit', resize: 'vertical' }}
@@ -1344,7 +1401,7 @@ export default function ClientDashboard() {
         </div>
       )}
 
-      {showNotificationPopup && combinedNotifications.length > 0 && (
+          {showNotificationPopup && combinedNotifications.length > 0 && (
         <div className="notif-popup" role="status" aria-live="polite">
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
             <div>
@@ -1380,6 +1437,7 @@ export default function ClientDashboard() {
               className="notif-btn primary"
               onClick={() => {
                 setShowNotificationPopup(false);
+                markNotificationsRead();
                 router.push('/client/notifications');
               }}
             >

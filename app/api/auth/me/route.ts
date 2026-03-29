@@ -26,9 +26,19 @@ export async function GET(request: NextRequest) {
     }
 
     await connectDB();
-    const user = await User.findById(payload.userId).select('fullName email role');
+    const user = await User.findById(payload.userId).select('fullName email role status statusReason');
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+    if (user.status === 'suspended' || user.status === 'deleted') {
+      return NextResponse.json(
+        {
+          error: 'Account not active',
+          reason: (user as any).statusReason || '',
+          status: user.status,
+        },
+        { status: 403 }
+      );
     }
 
     return NextResponse.json(

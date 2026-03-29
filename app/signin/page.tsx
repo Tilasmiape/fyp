@@ -55,8 +55,8 @@ export default function SigninPage() {
           body: JSON.stringify(formData),
         });
         
+        const result = await response.json();
         if (response.ok) {
-          const result = await response.json();
           if (result.token) {
             document.cookie = `authToken=${result.token}; path=/; max-age=86400`;
           }
@@ -69,7 +69,12 @@ export default function SigninPage() {
             router.push('/client/home');
           }
         } else {
-          setErrors({ submit: 'Invalid email or password!' });
+          if (response.status === 403 && result?.reason) {
+            alert(result.reason);
+            setErrors({ submit: result.reason });
+          } else {
+            setErrors({ submit: result?.error || 'Invalid email or password!' });
+          }
         }
       } catch (error) {
         console.error('Login error:', error);

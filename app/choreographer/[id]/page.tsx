@@ -17,6 +17,18 @@ interface AvailabilitySlot {
   duration: number;
 }
 
+interface ReviewItem {
+  feedback_id: string;
+  comment: string;
+  created_at: string;
+  rating?: number;
+  sender?: {
+    id: string;
+    name: string;
+    profileImage?: string;
+  };
+}
+
 interface ChoreographerProfile {
   id: string;
   name: string;
@@ -36,12 +48,13 @@ export default function ChoreographerProfilePage() {
   const id = params?.id;
   const router = useRouter();
   const [profile, setProfile] = useState<ChoreographerProfile | null>(null);
+  const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeVideo, setActiveVideo] = useState<Video | null>(null);
   const [reserveOpen, setReserveOpen] = useState(false);
   const [reserveDate, setReserveDate] = useState('');
-  const [reserveTime, setReserveTime] = useState<AvailabilitySlot | ''>('');
+  const [reserveTime, setReserveTime] = useState<string>('');
   const [reserveType, setReserveType] = useState<'studio' | 'in-house'>('studio');
   const [reserveLocation, setReserveLocation] = useState('');
   const [reserveLoading, setReserveLoading] = useState(false);
@@ -54,22 +67,78 @@ export default function ChoreographerProfilePage() {
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [availabilityError, setAvailabilityError] = useState('');
   const [reservedTimes, setReservedTimes] = useState<string[]>([]);
+  const [now, setNow] = useState<Date | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const reservedSet = useMemo(() => new Set(reservedTimes), [reservedTimes]);
-  
+
+  const futureAvailability = useMemo(() => {
+    const availability = Array.isArray(profile?.availabilityTimes) ? profile.availabilityTimes : [];
+    if (!now) return [];
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+
+    const toDateTime = (dateStr: string, timeStr: string) => {
+      const trimmed = timeStr.trim();
+      const match12 = trimmed.match(/^(0?[1-9]|1[0-2]):[0-5][0-9]\\s*(AM|PM)$/i);
+      const match24 = trimmed.match(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/);
+      if (!match12 && !match24) return null;
+      let hour = 0;
+      let minute = 0;
+      if (match12) {
+        hour = parseInt(match12[1], 10);
+        minute = parseInt(match12[2], 10);
+        const ampm = match12[3].toUpperCase();
+        if (ampm === 'PM' && hour < 12) hour += 12;
+        if (ampm === 'AM' && hour === 12) hour = 0;
+      } else if (match24) {
+        hour = parseInt(match24[1], 10);
+        minute = parseInt(match24[2], 10);
+      }
+      const dt = new Date(`${dateStr}T00:00:00`);
+      if (Number.isNaN(dt.getTime())) return null;
+      dt.setHours(hour, minute, 0, 0);
+      return dt;
+    };
+
+    return availability
+      .map((dateEntry) => {
+        const dateOnly = new Date(`${dateEntry.date}T00:00:00`);
+        if (Number.isNaN(dateOnly.getTime())) return null;
+        if (dateOnly < todayStart) return null;
+        if (dateOnly > todayStart) {
+          return dateEntry;
+        }
+        const nowRounded = new Date(now);
+        nowRounded.setSeconds(0, 0);
+        const futureSlots = (dateEntry.timeSlots || []).filter((slot) => {
+          const slotTime = toDateTime(dateEntry.date, slot.time);
+          return slotTime ? slotTime.getTime() >= nowRounded.getTime() : false;
+        });
+        if (futureSlots.length === 0) return null;
+        return { ...dateEntry, timeSlots: futureSlots };
+      })
+      .filter(Boolean) as DateAvailability[];
+  }, [profile?.availabilityTimes, now]);
+
+  useEffect(() => {
+    setNow(new Date());
+    const interval = setInterval(() => setNow(new Date()), 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Determine if choreographer has preset time slots for selected date
   const hasPresetSlots = useMemo(() => {
-    if (!profile?.availabilityTimes || !reserveDate) return false;
-    const dateAvailability = profile.availabilityTimes.find((a: any) => a.date === reserveDate);
+    if (!futureAvailability || !reserveDate) return false;
+    const dateAvailability = futureAvailability.find((a: any) => a.date === reserveDate);
     return dateAvailability && dateAvailability.timeSlots && dateAvailability.timeSlots.length > 0;
-  }, [profile?.availabilityTimes, reserveDate]);
+  }, [futureAvailability, reserveDate]);
   
   const timeSlots = useMemo(
     () => {
-      if (!profile?.availabilityTimes || !reserveDate || !hasPresetSlots) return [];
-      return getAvailabilityForDate(profile.availabilityTimes, reserveDate);
+      if (!futureAvailability || !reserveDate || !hasPresetSlots) return [];
+      return getAvailabilityForDate(futureAvailability, reserveDate);
     },
-    [profile?.availabilityTimes, reserveDate, hasPresetSlots]
+    [futureAvailability, reserveDate, hasPresetSlots]
   );
 
   useEffect(() => {
@@ -83,6 +152,7 @@ export default function ChoreographerProfilePage() {
           throw new Error(data?.error || 'Failed to load profile');
         }
         setProfile(data.choreographer);
+        setReviews(Array.isArray(data.reviews) ? data.reviews : []);
       } catch (err: any) {
         setError(err.message || 'Failed to load profile');
       } finally {
@@ -91,6 +161,12 @@ export default function ChoreographerProfilePage() {
     };
     if (id) fetchProfile();
   }, [id]);
+
+  const averageRating = useMemo(() => {
+    if (!reviews.length) return 0;
+    const total = reviews.reduce((sum, r) => sum + (Number(r.rating) || 0), 0);
+    return Math.round((total / reviews.length) * 10) / 10;
+  }, [reviews]);
 
   useEffect(() => {
     if (!activeVideo || !videoRef.current) return;
@@ -123,7 +199,7 @@ export default function ChoreographerProfilePage() {
         }
         const times = Array.isArray(data?.reservedTimes) ? data.reservedTimes.map(String) : [];
         setReservedTimes(times);
-        const currentTimeString = typeof reserveTime === 'string' ? reserveTime : reserveTime?.time;
+        const currentTimeString = reserveTime;
         if (currentTimeString && times.includes(currentTimeString)) {
           setReserveTime('');
           setReserveError('Selected time is no longer available.');
@@ -191,12 +267,9 @@ export default function ChoreographerProfilePage() {
       return;
     }
     
-    const timeString = hasPresetSlots 
-      ? (typeof reserveTime === 'string' ? reserveTime : reserveTime?.time)
-      : customTime;
-    const duration = hasPresetSlots
-      ? (typeof reserveTime === 'object' ? reserveTime.duration : 60)
-      : customDuration;
+    const timeString = hasPresetSlots ? reserveTime : customTime;
+    const selectedSlot = hasPresetSlots ? timeSlots.find(s => s.time === reserveTime) : null;
+    const duration = hasPresetSlots ? (selectedSlot?.duration || 60) : customDuration;
     
     if (hasPresetSlots && reservedSet.has(timeString)) { 
       setReserveError('Selected time is no longer available.'); 
@@ -288,31 +361,38 @@ export default function ChoreographerProfilePage() {
         .video-card video { width: 100%; height: 160px; object-fit: cover; display: block; background: #0b1220; }
         .video-title { padding: 10px 12px; font-size: 12px; font-weight: 700; }
         .fullscreen-btn { position: absolute; right: 10px; bottom: 10px; background: rgba(0,0,0,0.6); color: #fff; border: none; padding: 6px 10px; border-radius: 999px; font-size: 10px; font-weight: 700; cursor: pointer; }
-        .modal { position: fixed; inset: 0; background: rgba(10,10,15,0.8); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
-        .modal-inner { width: min(1000px, 95vw); background: #0b1220; border-radius: 18px; overflow: hidden; position: relative; }
-        .modal video { width: 100%; height: 70vh; object-fit: contain; background: #000; }
-        .close-btn { position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.1); color: #fff; border: none; padding: 8px 12px; border-radius: 999px; cursor: pointer; }
-        .modal {
+        .reservation-backdrop {
           position: fixed;
-          inset: 0;
-          background: rgba(15,23,42,0.7);
+          top: 0;
+          left: 0;
+          width: 100vw;
+          height: 100vh;
+          background: rgba(15, 23, 42, 0.85);
+          backdrop-filter: blur(12px);
           display: grid;
           place-items: center;
-          min-height: 100vh;
-          z-index: 60;
-          padding: 20px;
+          z-index: 9999;
+          padding: 24px;
           overflow-y: auto;
         }
-        .modal-card {
-          width: min(500px, 92vw);
+        .modal-inner { width: min(1000px, 95vw); background: #0b1220; border-radius: 18px; overflow: hidden; position: relative; margin: auto; }
+        .modal video { width: 100%; height: 70vh; object-fit: contain; background: #000; }
+        .close-btn { position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.1); color: #fff; border: none; padding: 8px 12px; border-radius: 999px; cursor: pointer; z-index: 10; }
+        .reservation-modal-card {
+          width: min(600px, 95vw);
           background: #fff;
-          border-radius: 28px;
-          padding: 24px;
-          box-shadow: 0 30px 70px rgba(0,0,0,0.35);
+          border-radius: 32px;
+          padding: 32px;
+          box-shadow: 0 40px 100px rgba(0, 0, 0, 0.5);
           position: relative;
-          margin: 20px auto;
+          margin: auto;
+          animation: modalAppear 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .modal-close {
+        @keyframes modalAppear {
+          from { transform: scale(0.95) translateY(20px); opacity: 0; }
+          to { transform: scale(1) translateY(0); opacity: 1; }
+        }
+        .reservation-modal-close {
           position: absolute;
           top: 14px;
           right: 14px;
@@ -326,21 +406,22 @@ export default function ChoreographerProfilePage() {
           align-items: center;
           justify-content: center;
           font-weight: 700;
+          z-index: 10;
         }
-        .modal-title {
+        .reservation-modal-title {
           font-family: 'Playfair Display', serif;
           font-size: 22px;
           margin: 0 0 4px;
         }
-        .modal-sub {
+        .reservation-modal-sub {
           font-size: 11px;
           text-transform: uppercase;
           letter-spacing: 2px;
           color: #f4b63a;
           font-weight: 700;
         }
-        .modal-field { margin-top: 18px; }
-        .modal-label {
+        .reservation-modal-field { margin-top: 18px; }
+        .reservation-modal-label {
           font-size: 10px;
           letter-spacing: 2px;
           text-transform: uppercase;
@@ -380,7 +461,12 @@ export default function ChoreographerProfilePage() {
           color: #fff;
           border-color: #111827;
         }
-        .time-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .time-grid { 
+          display: grid; 
+          grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); 
+          gap: 12px; 
+          margin-top: 12px;
+        }
         .time-btn {
           border: 1px solid #edf1f7;
           background: #f8fafc;
@@ -401,14 +487,28 @@ export default function ChoreographerProfilePage() {
         }
         .helper-text { font-size: 11px; color: #64748b; margin-top: 6px; }
         .summary {
-          margin-top: 18px;
-          padding: 16px;
-          border-radius: 18px;
-          background: #0b1220;
+          margin-top: 24px;
+          padding: 24px;
+          border-radius: 24px;
+          background: #0f172a;
           color: #fff;
+          box-shadow: 0 10px 25px rgba(15, 23, 42, 0.2);
         }
-        .summary-row { display: flex; justify-content: space-between; font-size: 11px; color: rgba(255,255,255,0.7); }
-        .summary-total { font-size: 20px; font-weight: 800; margin-top: 6px; }
+        .summary-row { 
+          display: flex; 
+          justify-content: space-between; 
+          font-size: 13px; 
+          color: rgba(255,255,255,0.7); 
+          margin-bottom: 8px;
+        }
+        .summary-total { 
+          font-size: 24px; 
+          font-weight: 800; 
+          margin-top: 12px; 
+          padding-top: 12px;
+          border-top: 1px solid rgba(255,255,255,0.1);
+          color: var(--accent);
+        }
         .summary-highlight { background: rgba(244, 182, 58, 0.1); padding: 10px; border-radius: 12px; margin-top: 12px; border: 1px solid rgba(244, 182, 58, 0.3); }
         .error-text { color: #b91c1c; font-size: 12px; margin-top: 10px; }
         .group-info { background: rgba(244, 182, 58, 0.05); padding: 12px; border-radius: 12px; border-left: 3px solid #f4b63a; font-size: 12px; color: #664d03; margin-top: 8px; }
@@ -444,7 +544,7 @@ export default function ChoreographerProfilePage() {
               ))}
             </div>
             <div className="hero-cta">
-              <button className="btn primary" onClick={openReserve}>Reserve Session</button>
+              <button className="btn primary" onClick={openReserve}>Reserve</button>
             </div>
           </div>
         </div>
@@ -472,6 +572,29 @@ export default function ChoreographerProfilePage() {
                 ))}
               </div>
             )}
+
+            <div className="section-title" style={{ marginTop: 24 }}>Client Reviews</div>
+            <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: 10 }}>
+              Average rating: {averageRating || 0} / 5
+            </div>
+            {reviews.length === 0 ? (
+              <div style={{ color: '#6b7280', fontSize: '13px' }}>No reviews yet.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {reviews.map((review) => (
+                  <div key={review.feedback_id} style={{ background: '#fff', border: '1px solid #e7e9f0', borderRadius: '14px', padding: '12px 14px' }}>
+                    <div style={{ fontWeight: 700, fontSize: '13px' }}>
+                      {review.sender?.name || 'Client'}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: 4 }}>
+                      {new Date(review.created_at).toLocaleDateString()}
+                      {review.rating !== undefined && ` · ${review.rating}/5`}
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#374151', marginTop: 6 }}>{review.comment}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="section">
@@ -489,8 +612,8 @@ export default function ChoreographerProfilePage() {
             </div>
 
             <div className="section-title" style={{ marginTop: 18 }}>📅 Available Dates & Times</div>
-            {profile.availabilityTimes && profile.availabilityTimes.length > 0 ? (
-              profile.availabilityTimes.map((dateEntry: any) => (
+            {futureAvailability && futureAvailability.length > 0 ? (
+              futureAvailability.map((dateEntry: any) => (
                 <div key={dateEntry.date} style={{ marginBottom: '16px', padding: '12px', backgroundColor: 'rgba(244, 182, 58, 0.05)', borderRadius: '8px', border: '1px solid rgba(244, 182, 58, 0.2)' }}>
                   <div style={{ fontSize: '14px', fontWeight: '600', color: '#f4b63a', marginBottom: '8px' }}>
                     {new Date(dateEntry.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
@@ -524,14 +647,14 @@ export default function ChoreographerProfilePage() {
               ))
             ) : (
               <div style={{ padding: '20px', textAlign: 'center', color: 'rgba(244, 182, 58, 0.5)', fontSize: '14px' }}>
-                Flexible availability - request your preferred time!
+                No upcoming slots right now — feel free to request your preferred time.
               </div>
             )}
 
             <div style={{ fontSize: '20px', fontWeight: 800, marginBottom: 12 }}>
               NPR {profile.pricePerSession.toLocaleString()} / session
             </div>
-            <button className="btn primary" style={{ width: '100%' }}>Reserve Session</button>
+            <button className="btn primary" style={{ width: '100%' }} onClick={openReserve}>Reserve</button>
           </div>
         </div>
       </div>
@@ -547,9 +670,9 @@ export default function ChoreographerProfilePage() {
       )}
 
       {reserveOpen && (
-        <div className="modal" onClick={() => setReserveOpen(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setReserveOpen(false)}>×</button>
+        <div className="reservation-backdrop" onClick={() => setReserveOpen(false)}>
+          <div className="reservation-modal-card" onClick={(e) => e.stopPropagation()}>
+            <button className="reservation-modal-close" onClick={() => setReserveOpen(false)}>X</button>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
               <div style={{ width: '44px', height: '44px', borderRadius: '12px', overflow: 'hidden', background: '#0f172a' }}>
                 {profile.profileImage && (
@@ -557,14 +680,14 @@ export default function ChoreographerProfilePage() {
                 )}
               </div>
               <div>
-                <div className="modal-title">{profile.name}</div>
-                <div className="modal-sub">Book a Session</div>
+                <div className="reservation-modal-title">{profile.name}</div>
+                <div className="reservation-modal-sub">Artist Reservation</div>
               </div>
             </div>
 
             {/* Session Category Selector */}
-            <div className="modal-field">
-              <label className="modal-label">1. Session Type</label>
+            <div className="reservation-modal-field">
+              <label className="reservation-modal-label">1. Session Type</label>
               <div className="toggle-group">
                 <button 
                   className={`toggle-btn ${sessionCategory === 'individual' ? 'active' : ''}`}
@@ -581,7 +704,7 @@ export default function ChoreographerProfilePage() {
               </div>
               {sessionCategory === 'group' && (
                 <div>
-                  <label className="modal-label" style={{ marginTop: 12 }}>Number of Participants</label>
+                  <label className="reservation-modal-label" style={{ marginTop: 12 }}>Number of Participants</label>
                   <input 
                     type="number" 
                     className="input" 
@@ -591,18 +714,18 @@ export default function ChoreographerProfilePage() {
                     onChange={(e) => setParticipantCount(Math.max(2, parseInt(e.target.value) || 2))}
                   />
                   <div className="group-info">
-                    💡 Group sessions are {Math.round((profile.groupSessionPriceMultiplier || 1.3 - 1) * 100)}% more expensive per person
+                    💡 Group sessions are {Math.round(((profile.groupSessionPriceMultiplier || 1.3) - 1) * 100)}% more expensive
                   </div>
                 </div>
               )}
             </div>
 
             {/* Session Location */}
-            <div className="modal-field">
-              <label className="modal-label">2. Session Location</label>
+            <div className="reservation-modal-field">
+              <label className="reservation-modal-label">2. Session Location</label>
               <div style={{ display: 'flex', gap: '10px' }}>
-                <button className={`toggle-btn ${reserveType === 'studio' ? 'active' : ''}`} onClick={() => setReserveType('studio')} style={{ flex: 1 }}>Studio</button>
-                <button className={`toggle-btn ${reserveType === 'in-house' ? 'active' : ''}`} onClick={() => setReserveType('in-house')} style={{ flex: 1 }}>In-House</button>
+                <button className={`toggle-btn ${reserveType === 'studio' ? 'active' : ''}`} onClick={() => setReserveType('studio')}>Studio</button>
+                <button className={`toggle-btn ${reserveType === 'in-house' ? 'active' : ''}`} onClick={() => setReserveType('in-house')}>In-House</button>
               </div>
               {reserveType === 'in-house' && (
                 <input
@@ -617,8 +740,8 @@ export default function ChoreographerProfilePage() {
             </div>
 
             {/* Date Selection */}
-            <div className="modal-field">
-              <label className="modal-label">3. Session Date</label>
+            <div className="reservation-modal-field">
+              <label className="reservation-modal-label">3. Session Date</label>
               <input 
                 type="date"
                 className="input"
@@ -635,12 +758,12 @@ export default function ChoreographerProfilePage() {
               
               {profile.availabilityTimes && profile.availabilityTimes.length > 0 && (
                 <div style={{ marginTop: '12px' }}>
-                  <label className="modal-label" style={{ fontSize: '9px', color: '#f4b63a', marginBottom: '4px' }}>
+                  <label className="reservation-modal-label" style={{ fontSize: '9px', color: '#f4b63a', marginBottom: '4px' }}>
                     💡 Choreographer's Preferred Dates
                   </label>
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
                     {profile.availabilityTimes
-                      .filter(dateEntry => new Date(dateEntry.date) >= new Date())
+                      .filter(dateEntry => new Date(dateEntry.date) >= new Date(new Date().setHours(0,0,0,0)))
                       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
                       .map(dateEntry => (
                         <button
@@ -674,61 +797,50 @@ export default function ChoreographerProfilePage() {
               )}
             </div>
 
-            {/* Time Selection - Preset Slots */}
-            {hasPresetSlots && (
-              <div className="modal-field">
-                <label className="modal-label">4. Time Slot</label>
-                {!reserveDate && <div className="helper-text">Select a date first to see available time slots</div>}
-                {reserveDate && availabilityLoading && <div className="helper-text">Checking availability...</div>}
+            {hasPresetSlots ? (
+              <div className="reservation-modal-field">
+                <label className="reservation-modal-label">4. Artist Availability</label>
+                {availabilityLoading && <div className="helper-text">Checking availability...</div>}
                 {availabilityError && <div className="error-text">{availabilityError}</div>}
-                {reserveDate && (
-                  <>
-                    <div className="helper-text" style={{ marginBottom: '10px', fontSize: '12px', color: '#6b7280' }}>
-                      {reservedSet.size > 0 ? `${timeSlots.length - reservedSet.size} of ${timeSlots.length} slots available` : `All ${timeSlots.length} slots available`}
-                    </div>
-                    <div className="time-grid">
-                      {timeSlots.map((slot, index) => {
-                        const slotKey = typeof slot === 'string' ? slot : `${slot.time}-${slot.duration}`;
-                        const slotTime = typeof slot === 'string' ? slot : slot.time;
-                        const isReserved = reservedSet.has(slotTime);
-                        const isSelected = reserveTime && (typeof reserveTime === 'string' ? reserveTime === slotTime : reserveTime.time === slot.time && reserveTime.duration === slot.duration);
-                        return (
-                          <button
-                            key={slotKey}
-                            className={`time-btn ${isSelected ? 'active' : ''} ${isReserved ? 'disabled' : ''}`}
-                            onClick={() => setReserveTime(slot)}
-                            disabled={isReserved}
-                            title={isReserved ? 'Already booked' : `Select ${slotTime}${typeof slot === 'object' && slot.duration ? ` (${slot.duration} min)` : ''}`}
-                          >
-                            {slotTime}
-                            {typeof slot === 'object' && slot.duration && (
-                              <span style={{ fontSize: '10px', display: 'block', opacity: 0.7 }}>
-                                {slot.duration} min
-                              </span>
-                            )}
-                            {isReserved && <span style={{ fontSize: '10px', display: 'block', opacity: 0.6 }}>Booked</span>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </>
+                {!reserveDate ? (
+                  <div className="helper-text">Please select a date first.</div>
+                ) : timeSlots.length === 0 ? (
+                  <div className="helper-text">No available slots for this date.</div>
+                ) : (
+                  <div className="time-grid">
+                    {timeSlots.map(slot => {
+                      const t = slot.time;
+                      const duration = slot.duration;
+                      const isReserved = reservedSet.has(t);
+                      return (
+                        <button
+                          key={`${t}-${duration}`}
+                          className={`time-btn ${reserveTime === t ? 'active' : ''} ${isReserved ? 'disabled' : ''}`}
+                          onClick={() => setReserveTime(t)}
+                          disabled={isReserved}
+                          title={isReserved ? 'Already booked' : 'Select time'}
+                        >
+                          {t}
+                          <div style={{ fontSize: '10px', opacity: 0.7, marginTop: '2px', fontWeight: 'normal' }}>
+                            {duration} min
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
-            )}
-
-            {/* Time Selection - Custom Time */}
-            {!hasPresetSlots && (
-              <div className="modal-field">
-                <label className="modal-label">4. Custom Time & Duration</label>
+            ) : (
+              <div className="reservation-modal-field">
+                <label className="reservation-modal-label">4. Custom Time & Duration</label>
                 <input 
                   type="time"
                   className="input"
                   value={customTime}
                   onChange={(e) => setCustomTime(e.target.value)}
-                  placeholder="HH:MM"
                 />
                 <div style={{ marginTop: 10 }}>
-                  <label className="modal-label">Duration (minutes)</label>
+                  <label className="reservation-modal-label">Duration</label>
                   <select className="input" value={customDuration} onChange={(e) => setCustomDuration(parseInt(e.target.value))}>
                     <option value={30}>30 minutes</option>
                     <option value={60}>1 hour</option>
@@ -740,16 +852,15 @@ export default function ChoreographerProfilePage() {
             )}
 
             {/* Notes Field */}
-            <div className="modal-field">
-              <label className="modal-label">5. Additional Notes</label>
+            <div className="reservation-modal-field">
+              <label className="reservation-modal-label">5. Additional Notes</label>
               <textarea 
                 className="input"
-                style={{ minHeight: 80, fontFamily: 'inherit', resize: 'vertical' }}
-                placeholder="Any special requests or notes about your session..."
+                style={{ minHeight: 60, fontFamily: 'inherit', resize: 'vertical' }}
+                placeholder="Any special requests..."
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
               />
-              <div className="helper-text">Optional: Let the choreographer know about your experience level or specific requirements</div>
             </div>
 
             {/* Price Summary */}
@@ -764,10 +875,10 @@ export default function ChoreographerProfilePage() {
               </div>
               {sessionCategory === 'group' && (
                 <div className="summary-highlight">
-                  Group Rate: {Math.round((profile.groupSessionPriceMultiplier || 1.3 - 1) * 100)}% premium applied
+                  Group Rate: {Math.round(((profile.groupSessionPriceMultiplier || 1.3) - 1) * 100)}% premium applied
                 </div>
               )}
-              <div className="summary-total">NPR {calculatePrice().toLocaleString()}</div>
+              <div className="summary-total">NPR {(Math.round((profile.pricePerSession * (sessionCategory === 'group' ? (profile.groupSessionPriceMultiplier || 1.3) : 1) + 50) * 100) / 100).toLocaleString()}</div>
             </div>
 
             {reserveError && <div className="error-text">{reserveError}</div>}
@@ -778,7 +889,7 @@ export default function ChoreographerProfilePage() {
               onClick={submitReservation}
               disabled={reserveLoading}
             >
-              {reserveLoading ? 'Submitting...' : 'Submit Reservation Request'}
+              {reserveLoading ? 'Reserving...' : 'Finalize Reservation'}
             </button>
           </div>
         </div>
@@ -786,3 +897,8 @@ export default function ChoreographerProfilePage() {
     </div>
   );
 }
+
+
+
+
+

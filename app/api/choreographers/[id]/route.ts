@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
 import User from '@/models/User';
 import Availability from '@/models/Availability';
-import { resolveAvailability } from '@/lib/availability';
+import Feedback from '@/models/Feedback';
+import mongoose from 'mongoose';
 
 export async function GET(
   _request: NextRequest,
@@ -26,6 +27,16 @@ export async function GET(
     // Fetch availability from separate collection
     const availabilityDocs = await Availability.find({ choreographerId: id }).select('date timeSlots -_id');
 
+    const reviewIdCandidates: Array<string | mongoose.Types.ObjectId> = [id];
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      reviewIdCandidates.push(new mongoose.Types.ObjectId(id));
+    }
+
+    const feedbacks = await Feedback.find({ reciver_id: { $in: reviewIdCandidates } })
+      .sort({ created_at: -1 })
+      .limit(20)
+      .populate('sender_id', 'fullName profileImage');
+
     const payload = {
       id: user._id,
       name: user.fullName || '',
@@ -48,7 +59,7 @@ export async function GET(
         })),
     };
 
-    return NextResponse.json({ success: true, choreographer: payload }, { status: 200 });
+    return NextResponse.json({ success: true, choreographer: payload, reviews: feedbacks.map((f: any) => ({ feedback_id: f.feedback_id, comment: f.comment, rating: f.rating ?? undefined, created_at: f.created_at, sender: f.sender_id ? { id: f.sender_id._id, name: f.sender_id.fullName || 'Client', profileImage: f.sender_id.profileImage || '' } : undefined })) }, { status: 200 });
   } catch (error) {
     console.error('Fetch choreographer by id error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -61,3 +72,4 @@ export async function GET(
 
 
 
+// TEST_WRITE

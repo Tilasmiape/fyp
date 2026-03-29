@@ -8,6 +8,7 @@ import { DateAvailability } from '@/lib/availability';
 interface Booking {
   id: string;
   clientName: string;
+  clientId?: string;
   date: string;
   time: string;
   duration?: number;
@@ -70,13 +71,23 @@ interface NotificationItem {
   date?: string;
 }
 
+interface APINotification {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  createdAt: string;
+  read: boolean;
+}
+
 export default function ChoreographerHome() {
   const router = useRouter();
   const postVideoRef = useRef<HTMLInputElement>(null);
 
-  const [activeTab, setActiveTab] = useState<'bookings' | 'profile' | 'posts'>('bookings');
+  const [activeTab, setActiveTab] = useState<'bookings' | 'profile' | 'posts' | 'availability'>('bookings');
   const [bookingTab, setBookingTab] = useState<'pending' | 'upcoming' | 'history'>('pending');
   const [showEditProfile, setShowEditProfile] = useState(false);
+  const [editAvailabilityOnly, setEditAvailabilityOnly] = useState(false);
   const [showPostModal, setShowPostModal] = useState(false);
 
   const [postVideoPreview, setPostVideoPreview] = useState('');
@@ -87,6 +98,12 @@ export default function ChoreographerHome() {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [showNotificationPopup, setShowNotificationPopup] = useState(false);
+  const [apiNotifications, setApiNotifications] = useState<APINotification[]>([]);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [feedbackComment, setFeedbackComment] = useState('');
+  const [feedbackError, setFeedbackError] = useState('');
+  const [feedbackSaving, setFeedbackSaving] = useState(false);
+  const [feedbackTarget, setFeedbackTarget] = useState<Booking | null>(null);
 
 
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -147,6 +164,24 @@ export default function ChoreographerHome() {
   }, []);
 
   useEffect(() => {
+    const loadNotifications = async () => {
+      try {
+        const notifRes = await fetch('/api/notifications', {
+          method: 'GET',
+          credentials: 'include',
+        });
+        const notifData = await notifRes.json();
+        if (notifRes.ok && notifData?.success) {
+          setApiNotifications(Array.isArray(notifData?.notifications) ? notifData.notifications : []);
+        }
+      } catch {
+        // silent
+      }
+    };
+    loadNotifications();
+  }, []);
+
+  useEffect(() => {
     const loadBookings = async () => {
       try {
         setBookingsLoading(true);
@@ -160,6 +195,7 @@ export default function ChoreographerHome() {
         setBookings(items.map((r: any) => ({
           id: r.id,
           clientName: r.client?.name || 'Client',
+          clientId: r.client?.id || '',
           date: r.date,
           time: r.time,
           duration: r.duration || 60,
@@ -223,7 +259,11 @@ export default function ChoreographerHome() {
       });
     });
 
-    if (notifications.length === 0) return;
+    const unreadReviews = apiNotifications.filter(
+      (n) => !n.read && n.type === 'review-received'
+    );
+
+    if (notifications.length === 0 && unreadReviews.length === 0) return;
 
     const key = `choreoNotificationsPopupShown:${choreographerData.email}`;
     const alreadyShown = sessionStorage.getItem(key);
@@ -231,7 +271,7 @@ export default function ChoreographerHome() {
       setShowNotificationPopup(true);
       sessionStorage.setItem(key, '1');
     }
-  }, [profileLoaded, choreographerData]);
+  }, [profileLoaded, choreographerData, apiNotifications]);
 
   const updateBookingStatus = async (id: string, action: 'accept' | 'reject') => {
     const promptLabel = action === 'accept'
@@ -261,6 +301,50 @@ export default function ChoreographerHome() {
       )));
     } catch (error: any) {
       alert(error.message || 'Failed to update booking');
+    }
+  };
+
+  const openFeedbackModal = (booking: Booking) => {
+    setFeedbackTarget(booking);
+    setFeedbackComment('');
+    setFeedbackError('');
+    setShowFeedbackModal(true);
+  };
+
+  const submitFeedback = async () => {
+    if (!feedbackTarget) return;
+    if (!feedbackTarget.clientId) {
+      setFeedbackError('Client id is missing for this booking.');
+      return;
+    }
+    if (!feedbackComment.trim()) {
+      setFeedbackError('Please add a comment before sending.');
+      return;
+    }
+    try {
+      setFeedbackSaving(true);
+      setFeedbackError('');
+      const res = await fetch('/api/choreographer/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          reciver_id: feedbackTarget.clientId || '',
+          booking_id: feedbackTarget.id,
+          comment: feedbackComment.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to send feedback');
+      }
+      setShowFeedbackModal(false);
+      setFeedbackTarget(null);
+      setFeedbackComment('');
+    } catch (error: any) {
+      setFeedbackError(error.message || 'Failed to send feedback');
+    } finally {
+      setFeedbackSaving(false);
     }
   };
 
@@ -301,6 +385,7 @@ export default function ChoreographerHome() {
         setChoreographerData((prev) => ({ ...prev, ...updatedData }));
       }
       setShowEditProfile(false);
+      setEditAvailabilityOnly(false);
     } catch (error) {
       console.error('Failed to save profile:', error);
       setProfileError('Failed to save profile');
@@ -384,10 +469,31 @@ export default function ChoreographerHome() {
     setPostError('');
   };
 
+  const isPastSession = (date: string, time: string) => {
+    if (!date || !time) return false;
+    const parts = date.split('-').map(Number);
+    if (parts.length !== 3 || parts.some(n => Number.isNaN(n))) return false;
+    const [year, month, day] = parts;
+    const timeParts = time.trim().split(' ');
+    if (timeParts.length < 2) return false;
+    const [clock, meridiemRaw] = timeParts;
+    const meridiem = meridiemRaw.toUpperCase();
+    const [hh, mm] = clock.split(':').map(Number);
+    if ([hh, mm].some(n => Number.isNaN(n))) return false;
+    let hours = hh % 12;
+    if (meridiem === 'PM') hours += 12;
+    const sessionTime = new Date(year, month - 1, day, hours, mm, 0, 0);
+    return sessionTime.getTime() < Date.now();
+  };
+
   const filteredBookings = bookings.filter(b => {
     if (bookingTab === 'pending') return b.status === 'pending';
-    if (bookingTab === 'upcoming') return b.status === 'accepted';
-    if (bookingTab === 'history') return b.status === 'rejected' || b.status === 'completed' || b.status === 'cancelled';
+    if (bookingTab === 'upcoming') {
+      return b.status === 'accepted' && !isPastSession(b.date, b.time);
+    }
+    if (bookingTab === 'history') {
+      return (b.status === 'accepted' && isPastSession(b.date, b.time)) || b.status === 'completed';
+    }
     return false;
   });
 
@@ -395,14 +501,87 @@ export default function ChoreographerHome() {
   const approvedVideos = choreographerData.videos.filter(v => v.status === 'approved');
   const pendingVideos = choreographerData.videos.filter(v => v.status === 'pending');
   const rejectedVideos = choreographerData.videos.filter(v => v.status === 'rejected');
+  const unreadReviewCount = apiNotifications.filter(
+    (n) => !n.read && n.type === 'review-received'
+  ).length;
   const totalNotifications =
-    (choreographerData.approvalStatus ? 1 : 0) + rejectedVideos.length;
+    (choreographerData.approvalStatus ? 1 : 0) + rejectedVideos.length + unreadReviewCount;
   const postsEmptyMessage =
     pendingVideos.length > 0
       ? 'Your videos are pending review. Approved videos will appear here.'
       : rejectedVideos.length > 0
         ? 'Your videos were rejected. Update and re-upload to get approved.'
         : 'No posts yet. Share your first dance video!';
+
+  const renderAvailabilitySection = () => (
+    <div className="profile-section">
+      <div className="profile-section-title">📅 Available Dates & Times</div>
+      {choreographerData.availability && choreographerData.availability.length > 0 ? (
+        <>
+          {choreographerData.availability.map((dateEntry) => (
+            <div
+              key={dateEntry.date}
+              style={{
+                marginBottom: '16px',
+                padding: '12px',
+                backgroundColor: 'rgba(251, 191, 36, 0.05)',
+                borderRadius: '8px',
+                border: '1px solid rgba(251, 191, 36, 0.2)',
+              }}
+            >
+              <div style={{ fontSize: '14px', fontWeight: '600', color: '#fbbf24', marginBottom: '8px' }}>
+                {new Date(dateEntry.date).toLocaleDateString('en-US', {
+                  weekday: 'long',
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                })}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
+                {dateEntry.timeSlots.map((slot, index) => (
+                  <div
+                    key={`${slot.time}-${slot.duration}-${index}`}
+                    style={{
+                      padding: '8px 10px',
+                      backgroundColor: 'rgba(251, 191, 36, 0.1)',
+                      borderRadius: '6px',
+                      border: '1px solid rgba(251, 191, 36, 0.3)',
+                      textAlign: 'center',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      color: '#fbbf24',
+                    }}
+                  >
+                    {slot.time}
+                    <div style={{ fontSize: '10px', opacity: 0.8, marginTop: '2px' }}>
+                      {slot.duration} min
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', marginTop: '8px' }}>
+                {dateEntry.timeSlots.length} slot(s) available on this date
+              </div>
+            </div>
+          ))}
+          <div
+            style={{
+              fontSize: '12px',
+              color: 'rgba(255,255,255,0.6)',
+              padding: '8px 12px',
+              backgroundColor: 'rgba(16, 185, 129, 0.1)',
+              borderRadius: '8px',
+              border: '1px solid rgba(16, 185, 129, 0.3)',
+            }}
+          >
+            ✓ {choreographerData.availability.length} date(s) with availability set. Clients can book these time slots.
+          </div>
+        </>
+      ) : (
+        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>No availability dates set yet</span>
+      )}
+    </div>
+  );
 
   return (
     <>
@@ -652,6 +831,19 @@ export default function ChoreographerHome() {
           transition: all 0.2s;
         }
         .btn-reject:hover { background: rgba(239,68,68,0.22); }
+        .btn-feedback {
+          background: rgba(96,165,250,0.15);
+          color: #93c5fd;
+          border: 1px solid rgba(96,165,250,0.3);
+          padding: 8px 18px;
+          border-radius: 8px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          font-family: 'DM Sans', sans-serif;
+          transition: all 0.2s;
+        }
+        .btn-feedback:hover { background: rgba(96,165,250,0.25); }
         .badge {
           padding: 6px 14px;
           border-radius: 7px;
@@ -1000,8 +1192,8 @@ export default function ChoreographerHome() {
             <button className="nav-btn-post" onClick={handleOpenPost}>
               ＋ Post
             </button>
-            <button className="nav-btn" onClick={() => setShowEditProfile(true)}>Edit Profile</button>
-          <button className="nav-btn">Availability</button>
+            <button className="nav-btn" onClick={() => { setEditAvailabilityOnly(false); setShowEditProfile(true); }}>Edit Profile</button>
+            <button className="nav-btn" onClick={() => setActiveTab('availability')}>Availability</button>
             <button className="nav-btn-logout" onClick={() => router.push('/signin')}>Logout</button>
           </div>
         </nav>
@@ -1018,6 +1210,15 @@ export default function ChoreographerHome() {
             </button>
             <button className={`sidebar-item ${activeTab === 'posts' ? 'active' : ''}`} onClick={() => setActiveTab('posts')}>
               <span className="sidebar-icon">🎬</span> My Posts
+            </button>
+            <button className={`sidebar-item ${activeTab === 'availability' ? 'active' : ''}`} onClick={() => setActiveTab('availability')}>
+              <span className="sidebar-icon">📅</span> Availability
+            </button>
+            <button className="sidebar-item" onClick={() => router.push('/choreographer/attendance')}>
+              <span className="sidebar-icon">📝</span> Attendance
+            </button>
+            <button className="sidebar-item" onClick={() => router.push('/choreographer/reviews')}>
+              <span className="sidebar-icon">💬</span> Reviews
             </button>
             <button className="sidebar-item" onClick={() => router.push('/choreographer/notifications')}>
               <span className="sidebar-icon">🔔</span> Notifications
@@ -1157,6 +1358,11 @@ export default function ChoreographerHome() {
                           <button className="btn-accept" onClick={() => updateBookingStatus(b.id, 'accept')}>Accept</button>
                           <button className="btn-reject" onClick={() => updateBookingStatus(b.id, 'reject')}>Reject</button>
                         </>)}
+                        {((b.status === 'completed') || (b.status === 'accepted' && isPastSession(b.date, b.time))) && (
+                          <button className="btn-feedback" onClick={() => openFeedbackModal(b)}>
+                            Send Feedback
+                          </button>
+                        )}
                         {b.status === 'accepted' && <span className="badge badge-confirmed">Accepted</span>}
                         {b.status === 'rejected' && <span className="badge badge-cancelled">Rejected</span>}
                         {b.status === 'completed' && <span className="badge badge-completed">Completed</span>}
@@ -1173,7 +1379,7 @@ export default function ChoreographerHome() {
               <>
                 <div className="section-header">
                   <h2 className="section-title">My Profile</h2>
-                  <button className="btn-edit-profile" style={{ width: 'auto', padding: '10px 20px' }} onClick={() => setShowEditProfile(true)}>
+                  <button className="btn-edit-profile" style={{ width: 'auto', padding: '10px 20px' }} onClick={() => { setEditAvailabilityOnly(false); setShowEditProfile(true); }}>
                     ✏️ Edit Profile
                   </button>
                 </div>
@@ -1206,7 +1412,7 @@ export default function ChoreographerHome() {
                         <div className="profile-mini-label">Rating</div>
                       </div>
                     </div>
-                    <button className="btn-edit-profile" onClick={() => setShowEditProfile(true)}>✏️ Edit Profile</button>
+                    <button className="btn-edit-profile" onClick={() => { setEditAvailabilityOnly(false); setShowEditProfile(true); }}>✏️ Edit Profile</button>
                   </div>
 
                   {/* Right sections */}
@@ -1230,50 +1436,7 @@ export default function ChoreographerHome() {
                     </div>
 
                     {/* Availability */}
-                    <div className="profile-section">
-                      <div className="profile-section-title">📅 Available Dates & Times</div>
-                      {choreographerData.availability && choreographerData.availability.length > 0 ? (
-                        <>
-                          {choreographerData.availability.map((dateEntry) => (
-                            <div key={dateEntry.date} style={{ marginBottom: '16px', padding: '12px', backgroundColor: 'rgba(251, 191, 36, 0.05)', borderRadius: '8px', border: '1px solid rgba(251, 191, 36, 0.2)' }}>
-                              <div style={{ fontSize: '14px', fontWeight: '600', color: '#fbbf24', marginBottom: '8px' }}>
-                                {new Date(dateEntry.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                              </div>
-                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
-                                {dateEntry.timeSlots.map((slot, index) => (
-                                  <div
-                                    key={`${slot.time}-${slot.duration}-${index}`}
-                                    style={{
-                                      padding: '8px 10px',
-                                      backgroundColor: 'rgba(251, 191, 36, 0.1)',
-                                      borderRadius: '6px',
-                                      border: '1px solid rgba(251, 191, 36, 0.3)',
-                                      textAlign: 'center',
-                                      fontSize: '12px',
-                                      fontWeight: '600',
-                                      color: '#fbbf24',
-                                    }}
-                                  >
-                                    {slot.time}
-                                    <div style={{ fontSize: '10px', opacity: 0.8, marginTop: '2px' }}>
-                                      {slot.duration} min
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                              <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', marginTop: '8px' }}>
-                                {dateEntry.timeSlots.length} slot(s) available on this date
-                              </div>
-                            </div>
-                          ))}
-                          <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)', padding: '8px 12px', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
-                            ✓ {choreographerData.availability.length} date(s) with availability set. Clients can book these time slots.
-                          </div>
-                        </>
-                      ) : (
-                        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>No availability dates set yet</span>
-                      )}
-                    </div>
+                    {renderAvailabilitySection()}
 
                     {/* Videos from Edit Profile */}
                     <div className="profile-section">
@@ -1370,6 +1533,19 @@ export default function ChoreographerHome() {
                 }
               </>
             )}
+
+            {/* â”€â”€ AVAILABILITY TAB â”€â”€ */}
+            {activeTab === 'availability' && (
+              <>
+                <div className="section-header">
+                  <h2 className="section-title">Availability</h2>
+                  <button className="btn-edit-profile" style={{ width: 'auto', padding: '10px 20px' }} onClick={() => { setEditAvailabilityOnly(true); setShowEditProfile(true); }}>
+                    âœï¸ Edit Availability
+                  </button>
+                </div>
+                {renderAvailabilitySection()}
+              </>
+            )}
           </main>
         </div>
       </div>
@@ -1377,7 +1553,8 @@ export default function ChoreographerHome() {
       {/* EDIT PROFILE MODAL */}
       <EditProfileModal
         isOpen={showEditProfile}
-        onClose={() => setShowEditProfile(false)}
+        onClose={() => { setShowEditProfile(false); setEditAvailabilityOnly(false); }}
+        availabilityOnly={editAvailabilityOnly}
         choreographerData={choreographerData}
         onSave={handleSaveProfile}
         onAutoSaveAvailability={(avail) => setChoreographerData(prev => ({ ...prev, availability: avail }))}
@@ -1444,6 +1621,46 @@ export default function ChoreographerHome() {
         </div>
       )}
 
+      {showFeedbackModal && feedbackTarget && (
+        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowFeedbackModal(false)}>
+          <div className="modal-box">
+            <div className="modal-title">Send Feedback</div>
+
+            <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginBottom: '12px' }}>
+              {feedbackTarget.clientName} · {feedbackTarget.date} · {feedbackTarget.time}
+            </div>
+
+            {feedbackError && <div className="error-msg" style={{ marginBottom: '12px' }}>{feedbackError}</div>}
+
+            <div className="field-gap">
+              <div>
+                <label className="modal-label">Comment *</label>
+                <textarea
+                  className="modal-textarea"
+                  value={feedbackComment}
+                  onChange={(e) => setFeedbackComment(e.target.value)}
+                  placeholder="Share your feedback for the client..."
+                />
+              </div>
+              <div className="modal-actions">
+                <button className="btn-post" onClick={submitFeedback} disabled={feedbackSaving}>
+                  {feedbackSaving ? 'Sending...' : 'Send Feedback'}
+                </button>
+                <button
+                  className="btn-cancel"
+                  onClick={() => {
+                    setShowFeedbackModal(false);
+                    setFeedbackTarget(null);
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showNotificationPopup && (
         <div
           style={{
@@ -1478,10 +1695,17 @@ export default function ChoreographerHome() {
           </div>
           <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '13px', marginBottom: '10px' }}>
             You have {totalNotifications} notification{totalNotifications === 1 ? '' : 's'}.
+            {unreadReviewCount > 0 && (
+              <span style={{ display: 'block', marginTop: '6px', color: 'rgba(255,255,255,0.7)' }}>
+                {unreadReviewCount} new client review{unreadReviewCount === 1 ? '' : 's'}.
+              </span>
+            )}
           </div>
           <button
             onClick={() => {
               setShowNotificationPopup(false);
+              fetch('/api/notifications', { method: 'PATCH', credentials: 'include' })
+                .catch(() => {});
               router.push('/choreographer/notifications');
             }}
             style={{

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
 import User from '@/models/User';
+import Notification from '@/models/Notification';
 import bcrypt from 'bcryptjs';
 
 export async function GET(request: NextRequest) {
@@ -82,7 +83,7 @@ export async function PUT(request: NextRequest) {
     try {
         await connectDB();
 
-        const { id, fullName, email, role, phoneNumber, bio, danceStyles, pricePerSession, status, approvalStatus } = await request.json();
+        const { id, fullName, email, role, phoneNumber, bio, danceStyles, pricePerSession, status, approvalStatus, statusReason } = await request.json();
 
         if (!id) {
             return NextResponse.json(
@@ -99,7 +100,15 @@ export async function PUT(request: NextRequest) {
         if (bio !== undefined) updateData.bio = bio;
         if (danceStyles) updateData.danceStyles = danceStyles;
         if (pricePerSession !== undefined) updateData.pricePerSession = pricePerSession;
-        if (status !== undefined) updateData.status = status;
+        if (status !== undefined) {
+            updateData.status = status;
+            updateData.statusUpdatedAt = new Date();
+            if (statusReason !== undefined) {
+                updateData.statusReason = String(statusReason || '');
+            } else if (status === 'active') {
+                updateData.statusReason = '';
+            }
+        }
         if (approvalStatus !== undefined) updateData.approvalStatus = approvalStatus;
 
         const user = await User.findByIdAndUpdate(id, updateData, { new: true }).select('-password');
@@ -111,10 +120,28 @@ export async function PUT(request: NextRequest) {
             );
         }
 
-        return NextResponse.json(
-            { success: true, user },
-            { status: 200 }
-        );
+        if (status !== undefined && user) {
+            const reasonText = updateData.statusReason ? ` Reason: ${updateData.statusReason}` : '';
+            if (status === 'suspended') {
+                await Notification.create({
+                    userId: user._id,
+                    type: 'account-suspended',
+                    title: 'Account Suspended',
+                    message: `Your account has been suspended.${reasonText}`,
+                    read: false,
+                });
+            } else if (status === 'active') {
+                await Notification.create({
+                    userId: user._id,
+                    type: 'account-restored',
+                    title: 'Account Restored',
+                    message: 'Your account has been restored. You can now log in.',
+                    read: false,
+                });
+            }
+        }
+
+        return NextResponse.json({ success: true, user }, { status: 200 });
     } catch (error) {
         console.error('Update user error:', error);
         return NextResponse.json(
@@ -128,7 +155,7 @@ export async function DELETE(request: NextRequest) {
     try {
         await connectDB();
 
-        const { id } = await request.json();
+        const { id, reason } = await request.json();
 
         if (!id) {
             return NextResponse.json(
@@ -137,19 +164,26 @@ export async function DELETE(request: NextRequest) {
             );
         }
 
-        const user = await User.findByIdAndDelete(id);
+        const user = await User.findByIdAndUpdate(
+            id,
+            { status: 'deleted', statusReason: String(reason || ''), statusUpdatedAt: new Date() },
+            { new: true }
+        );
 
         if (!user) {
-            return NextResponse.json(
-                { error: 'User not found' },
-                { status: 404 }
-            );
+            return NextResponse.json({ error: 'User not found' }, { status: 404 });
         }
 
-        return NextResponse.json(
-            { success: true, message: 'User deleted successfully' },
-            { status: 200 }
-        );
+        const reasonText = reason ? ` Reason: ${reason}` : '';
+        await Notification.create({
+            userId: user._id,
+            type: 'account-deleted',
+            title: 'Account Deleted',
+            message: `Your account has been deleted by admin.${reasonText}`,
+            read: false,
+        });
+
+        return NextResponse.json({ success: true, message: 'User deleted successfully' }, { status: 200 });
     } catch (error) {
         console.error('Delete user error:', error);
         return NextResponse.json(

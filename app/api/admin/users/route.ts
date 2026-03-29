@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
 import User from '@/models/User';
+import Notification from '@/models/Notification';
 
 export async function PUT(request: NextRequest) {
     try {
         await connectDB();
 
-        const { userId, action } = await request.json();
+        const { userId, action, reason } = await request.json();
 
         if (!userId || !['suspend', 'restore', 'delete'].includes(action)) {
             return NextResponse.json(
@@ -16,13 +17,25 @@ export async function PUT(request: NextRequest) {
         }
 
         if (action === 'delete') {
-            const deletedUser = await User.findByIdAndDelete(userId);
+            const deletedUser = await User.findByIdAndUpdate(
+                userId,
+                { status: 'deleted', statusReason: String(reason || ''), statusUpdatedAt: new Date() },
+                { new: true }
+            );
             if (!deletedUser) {
                 return NextResponse.json(
                     { error: 'User not found' },
                     { status: 404 }
                 );
             }
+            const reasonText = reason ? ` Reason: ${reason}` : '';
+            await Notification.create({
+                userId: deletedUser._id,
+                type: 'account-deleted',
+                title: 'Account Deleted',
+                message: `Your account has been deleted by admin.${reasonText}`,
+                read: false,
+            });
             return NextResponse.json(
                 { success: true, message: 'User deleted successfully' },
                 { status: 200 }
@@ -32,7 +45,11 @@ export async function PUT(request: NextRequest) {
         const status = action === 'suspend' ? 'suspended' : 'active';
         const user = await User.findByIdAndUpdate(
             userId,
-            { status },
+            {
+                status,
+                statusReason: action === 'suspend' ? String(reason || '') : '',
+                statusUpdatedAt: new Date(),
+            },
             { new: true }
         );
 
@@ -43,10 +60,28 @@ export async function PUT(request: NextRequest) {
             );
         }
 
-        return NextResponse.json(
-            { success: true, message: `User ${action}d successfully` },
-            { status: 200 }
-        );
+        if (user) {
+            if (action === 'suspend') {
+                const reasonText = reason ? ` Reason: ${reason}` : '';
+                await Notification.create({
+                    userId: user._id,
+                    type: 'account-suspended',
+                    title: 'Account Suspended',
+                    message: `Your account has been suspended.${reasonText}`,
+                    read: false,
+                });
+            } else {
+                await Notification.create({
+                    userId: user._id,
+                    type: 'account-restored',
+                    title: 'Account Restored',
+                    message: 'Your account has been restored. You can now log in.',
+                    read: false,
+                });
+            }
+        }
+
+        return NextResponse.json({ success: true, message: `User ${action}d successfully` }, { status: 200 });
     } catch (error) {
         console.error('Update user status error:', error);
         return NextResponse.json(

@@ -26,6 +26,12 @@ export default function ClientSessionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [reservations, setReservations] = useState<ReservationItem[]>([]);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [feedbackTarget, setFeedbackTarget] = useState<ReservationItem | null>(null);
+  const [feedbackComment, setFeedbackComment] = useState('');
+  const [feedbackRating, setFeedbackRating] = useState(5);
+  const [feedbackError, setFeedbackError] = useState('');
+  const [feedbackSaving, setFeedbackSaving] = useState(false);
 
   useEffect(() => {
     const loadUser = async () => {
@@ -67,9 +73,73 @@ export default function ClientSessionsPage() {
     load();
   }, [userRole]);
 
+  const isSessionPast = (date: string, time: string) => {
+    if (!date || !time) return false;
+    const [year, month, day] = date.split('-').map(Number);
+    if ([year, month, day].some(n => Number.isNaN(n))) return false;
+    const [clock, meridiemRaw] = time.trim().split(' ');
+    if (!clock || !meridiemRaw) return false;
+    const meridiem = meridiemRaw.toUpperCase();
+    const [hh, mm] = clock.split(':').map(Number);
+    if ([hh, mm].some(n => Number.isNaN(n))) return false;
+    let hours = hh % 12;
+    if (meridiem === 'PM') hours += 12;
+    const sessionTime = new Date(year, month - 1, day, hours, mm, 0, 0);
+    return sessionTime.getTime() < Date.now();
+  };
+
   const requested = reservations.filter(r => r.status === 'pending');
-  const upcoming = reservations.filter(r => r.status === 'accepted');
+  const upcoming = reservations.filter(r => r.status === 'accepted' && !isSessionPast(r.date, r.time));
+  const history = reservations.filter(
+    r => (r.status === 'accepted' && isSessionPast(r.date, r.time)) || (r as any).status === 'completed'
+  );
   const past = reservations.filter(r => r.status === 'rejected' || r.status === 'cancelled');
+
+  const openFeedback = (reservation: ReservationItem) => {
+    setFeedbackTarget(reservation);
+    setFeedbackComment('');
+    setFeedbackRating(5);
+    setFeedbackError('');
+    setShowFeedbackModal(true);
+  };
+
+  const submitFeedback = async () => {
+    if (!feedbackTarget) return;
+    if (!feedbackTarget.choreographer?.id) {
+      setFeedbackError('Choreographer id is missing for this session.');
+      return;
+    }
+    if (!feedbackComment.trim()) {
+      setFeedbackError('Please add your feedback before sending.');
+      return;
+    }
+    try {
+      setFeedbackSaving(true);
+      setFeedbackError('');
+      const res = await fetch('/api/client/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          reciver_id: feedbackTarget.choreographer.id,
+          booking_id: feedbackTarget.id,
+          comment: feedbackComment.trim(),
+          rating: feedbackRating,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to send feedback');
+      }
+      setShowFeedbackModal(false);
+      setFeedbackTarget(null);
+      setFeedbackComment('');
+    } catch (err: any) {
+      setFeedbackError(err.message || 'Failed to send feedback');
+    } finally {
+      setFeedbackSaving(false);
+    }
+  };
 
   return (
     <div className="sessions-root">
@@ -99,6 +169,80 @@ export default function ClientSessionsPage() {
         .meta { font-size: 12px; color: #6b7280; margin-top: 4px; }
         .status { padding: 4px 10px; border-radius: 999px; font-size: 10px; font-weight: 700; background: #eef2ff; color: #4f46e5; text-transform: uppercase; }
         .price { font-weight: 800; }
+        .btn-feedback {
+          border: none;
+          background: rgba(15,23,42,0.08);
+          color: #0f172a;
+          font-weight: 700;
+          font-size: 11px;
+          letter-spacing: 0.8px;
+          text-transform: uppercase;
+          padding: 8px 12px;
+          border-radius: 999px;
+          cursor: pointer;
+          margin-top: 8px;
+        }
+        .btn-feedback:hover { background: rgba(15,23,42,0.14); }
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(15,23,42,0.45);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 100;
+        }
+        .modal-box {
+          width: min(520px, 92vw);
+          background: #fff;
+          border-radius: 18px;
+          padding: 20px;
+          border: 1px solid #e7e9f0;
+          box-shadow: 0 20px 40px rgba(15,23,42,0.2);
+        }
+        .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 12px; }
+        .modal-label { font-size: 11px; letter-spacing: 1.6px; text-transform: uppercase; color: #9ca3af; font-weight: 700; }
+        .modal-textarea {
+          width: 100%;
+          border: 1px solid #e7e9f0;
+          border-radius: 12px;
+          padding: 10px 12px;
+          min-height: 100px;
+          font-family: inherit;
+          font-size: 13px;
+          margin-top: 8px;
+        }
+        .rating-row { display: flex; gap: 8px; margin-top: 10px; }
+        .rating-btn {
+          border: 1px solid #e7e9f0;
+          background: #fff;
+          color: #111827;
+          font-weight: 700;
+          font-size: 12px;
+          padding: 6px 10px;
+          border-radius: 999px;
+          cursor: pointer;
+        }
+        .rating-btn.active {
+          background: #111827;
+          color: #fff;
+          border-color: #111827;
+        }
+        .modal-actions { display: flex; gap: 10px; margin-top: 16px; }
+        .modal-btn {
+          flex: 1;
+          border: none;
+          border-radius: 999px;
+          padding: 10px 12px;
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 1px;
+          text-transform: uppercase;
+          cursor: pointer;
+        }
+        .modal-btn.primary { background: #111827; color: #fff; }
+        .modal-btn.ghost { background: #f1f2f7; color: #111827; }
+        .modal-error { color: #ef4444; font-size: 12px; margin-top: 8px; }
         .empty { color: #9ca3af; font-size: 13px; }
       `}</style>
 
@@ -172,14 +316,38 @@ export default function ClientSessionsPage() {
               <div style={{ textAlign: 'right' }}>
                 <div className="status" style={{ background: '#ecfdf5', color: '#047857' }}>Confirmed</div>
                 <div className="price" style={{ marginTop: '6px' }}>NPR {r.total.toLocaleString()}</div>
+                {/* Reviews only after completion, shown in history section */}
               </div>
             </div>
           ))
         )}
 
-        <div className="section-title">Past / Rejected Sessions</div>
+        <div className="section-title">History (Completed Sessions)</div>
+        {history.length === 0 ? (
+          <div className="empty">No completed sessions yet.</div>
+        ) : (
+          history.map(r => (
+            <div key={r.id} className="card" style={{ marginBottom: '14px', borderLeft: '4px solid #64748b' }}>
+              <div className="card-left">
+                <div className="avatar">{r.choreographer.profileImage && <img src={r.choreographer.profileImage} alt={r.choreographer.name} />}</div>
+                <div>
+                  <div className="label">Completed Session</div>
+                  <div className="name">{r.choreographer.name}</div>
+                  <div className="meta">{r.date} | {r.time}</div>
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div className="status" style={{ background: '#f1f2f7', color: '#6b7280' }}>Completed</div>
+                <div className="price" style={{ marginTop: '6px' }}>NPR {r.total.toLocaleString()}</div>
+                <button className="btn-feedback" onClick={() => openFeedback(r)}>Send Review</button>
+              </div>
+            </div>
+          ))
+        )}
+
+        <div className="section-title">Rejected / Cancelled Sessions</div>
         {past.length === 0 ? (
-          <div className="empty">No past sessions yet.</div>
+          <div className="empty">No rejected or cancelled sessions.</div>
         ) : (
           past.map(r => (
             <div key={r.id} className="card" style={{ marginBottom: '14px', opacity: 0.7 }}>
@@ -199,6 +367,52 @@ export default function ClientSessionsPage() {
           ))
         )}
       </div>
+
+      {showFeedbackModal && feedbackTarget && (
+        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowFeedbackModal(false)}>
+          <div className="modal-box">
+            <div className="modal-title">Send Review</div>
+            <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '10px' }}>
+              {feedbackTarget.choreographer.name} · {feedbackTarget.date} · {feedbackTarget.time}
+            </div>
+            {feedbackError && <div className="modal-error">{feedbackError}</div>}
+            <label className="modal-label">Comment *</label>
+            <textarea
+              className="modal-textarea"
+              value={feedbackComment}
+              onChange={(e) => setFeedbackComment(e.target.value)}
+              placeholder="Share your review for the choreographer..."
+            />
+            <div className="modal-label" style={{ marginTop: '12px' }}>Rating</div>
+            <div className="rating-row">
+              {[1, 2, 3, 4, 5].map((value) => (
+                <button
+                  key={value}
+                  className={`rating-btn ${feedbackRating === value ? 'active' : ''}`}
+                  onClick={() => setFeedbackRating(value)}
+                  type="button"
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
+            <div className="modal-actions">
+              <button className="modal-btn primary" onClick={submitFeedback} disabled={feedbackSaving}>
+                {feedbackSaving ? 'Sending...' : 'Send Review'}
+              </button>
+              <button
+                className="modal-btn ghost"
+                onClick={() => {
+                  setShowFeedbackModal(false);
+                  setFeedbackTarget(null);
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

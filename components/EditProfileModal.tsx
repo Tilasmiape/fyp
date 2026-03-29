@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useRef, useState } from 'react';
 import { DEFAULT_TIME_SLOTS, formatTimeSlot, normalizeAvailability, validateAvailabilityTimes, AvailabilitySlot, DateAvailability } from '@/lib/availability';
@@ -14,6 +14,7 @@ interface DanceVideo {
 interface EditProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
+  availabilityOnly?: boolean;
   choreographerData: {
     name: string;
     email: string;
@@ -42,7 +43,7 @@ function toDataUrl(file: File): Promise<string> {
   });
 }
 
-export default function EditProfileModal({ isOpen, onClose, choreographerData, onSave, onAutoSaveAvailability }: EditProfileModalProps) {
+export default function EditProfileModal({ isOpen, onClose, availabilityOnly, choreographerData, onSave, onAutoSaveAvailability }: EditProfileModalProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const profileImageInputRef = useRef<HTMLInputElement>(null);
 
@@ -280,10 +281,12 @@ export default function EditProfileModal({ isOpen, onClose, choreographerData, o
 
   const handleSave = async () => {
     if (isSaving) return;
-    const hasEmptyTitle = videos.some((video) => !video.title.trim());
-    if (hasEmptyTitle) {
-      setUploadError('Each video needs a title');
-      return;
+    if (!availabilityOnly) {
+      const hasEmptyTitle = videos.some((video) => !video.title.trim());
+      if (hasEmptyTitle) {
+        setUploadError('Each video needs a title');
+        return;
+      }
     }
 
     setIsSaving(true);
@@ -308,7 +311,7 @@ export default function EditProfileModal({ isOpen, onClose, choreographerData, o
         profileImage: profileImagePreview,
       };
       await onSave(updatedData);
-      setAvailabilitySuccess(`✓ Successfully saved availability for ${validation.valid.length} date(s)`);
+      setAvailabilitySuccess(`Successfully saved availability for ${validation.valid.length} date(s)`);
       setTimeout(() => onClose(), 800);
     } finally {
       setIsSaving(false);
@@ -316,6 +319,272 @@ export default function EditProfileModal({ isOpen, onClose, choreographerData, o
   };
 
   if (!isOpen) return null;
+  if (availabilityOnly) {
+    return (
+      <div
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '20px',
+        }}
+      >
+        <div
+          style={{
+            backgroundColor: '#fff',
+            borderRadius: '24px',
+            width: '100%',
+            maxWidth: '900px',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            boxShadow: '0 25px 50px rgba(0, 0, 0, 0.5)',
+            position: 'relative',
+          }}
+        >
+          <button
+            onClick={onClose}
+            style={{
+              position: 'absolute',
+              top: '20px',
+              right: '20px',
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              backgroundColor: '#f3f4f6',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: '18px',
+            }}
+          >
+            X
+          </button>
+
+          <div style={{ padding: '36px' }}>
+            <h3 style={{ margin: 0, marginBottom: '24px', fontSize: '22px', fontWeight: '700', color: '#1f2937' }}>Edit Availability</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>Availability</label>
+                <div style={{ border: '2px solid #e5e7eb', borderRadius: '12px', padding: '16px' }}>
+
+                  {/* Add new date */}
+                  <div style={{ marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid #e5e7eb' }}>
+                    <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Add Available Date</div>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <input
+                        type="date"
+                        value={selectedDate}
+                        onChange={(e) => {
+                          setSelectedDate(e.target.value);
+                          if (availabilityError) setAvailabilityError('');
+                        }}
+                        min={new Date().toISOString().split('T')[0]}
+                        style={{ flex: 1, padding: '10px 12px', borderRadius: '10px', border: '2px solid #e5e7eb', fontSize: '13px' }}
+                      />
+                      <button
+                        type="button"
+                        onClick={addDateAvailability}
+                        style={{
+                          padding: '10px 14px',
+                          borderRadius: '10px',
+                          border: 'none',
+                          backgroundColor: '#111827',
+                          color: '#fff',
+                          fontSize: '12px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Add Date
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Existing dates */}
+                  {availability.map((dateEntry) => (
+                    <div key={dateEntry.date} style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#f9fafb', borderRadius: '8px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                        <div style={{ fontSize: '14px', fontWeight: '600', color: '#374151' }}>
+                          {new Date(dateEntry.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeDateAvailability(dateEntry.date)}
+                          style={{
+                            padding: '4px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid #ef4444',
+                            backgroundColor: '#fef2f2',
+                            color: '#ef4444',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+
+                      {/* Default time slots */}
+                      <div style={{ marginBottom: '12px' }}>
+                        <div style={{ fontSize: '11px', fontWeight: '600', color: '#6b7280', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Available Times</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                          {DEFAULT_TIME_SLOTS.map((slot) => {
+                            const isSelected = dateEntry.timeSlots.some(s => s.time === slot.time && s.duration === slot.duration);
+                            return (
+                              <button
+                                key={`${slot.time}-${slot.duration}`}
+                                type="button"
+                                onClick={() => toggleTimeSlot(dateEntry.date, slot)}
+                                style={{
+                                  padding: '8px 10px',
+                                  borderRadius: '8px',
+                                  border: `2px solid ${isSelected ? '#111827' : '#e5e7eb'}`,
+                                  backgroundColor: isSelected ? '#111827' : '#fff',
+                                  color: isSelected ? '#fff' : '#374151',
+                                  fontSize: '12px',
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                {slot.time}
+                                <div style={{ fontSize: '10px', opacity: 0.8, marginTop: '2px' }}>
+                                  {slot.duration} min
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Custom time slots for this date */}
+                      {dateEntry.timeSlots.filter((slot) => !DEFAULT_TIME_SLOTS.some(defaultSlot => defaultSlot.time === slot.time && defaultSlot.duration === slot.duration)).length > 0 && (
+                        <div style={{ marginBottom: '12px', paddingTop: '12px', borderTop: '1px solid #e5e7eb' }}>
+                          <div style={{ fontSize: '11px', fontWeight: '600', color: '#6b7280', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Custom Times Added</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                            {dateEntry.timeSlots
+                              .filter((slot) => !DEFAULT_TIME_SLOTS.some(defaultSlot => defaultSlot.time === slot.time && defaultSlot.duration === slot.duration))
+                              .map((slot) => (
+                                <button
+                                  key={`${slot.time}-${slot.duration}`}
+                                  type="button"
+                                  onClick={() => toggleTimeSlot(dateEntry.date, slot)}
+                                  style={{
+                                    padding: '6px 10px',
+                                    borderRadius: '999px',
+                                    border: '2px solid #10b981',
+                                    backgroundColor: '#ecfdf5',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    color: '#10b981',
+                                  }}
+                                >
+                                  {slot.time} ({slot.duration}min) ×
+                                </button>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Add custom time for this date */}
+                      <div style={{ paddingTop: '12px', borderTop: '1px solid #e5e7eb' }}>
+                        <div style={{ fontSize: '11px', fontWeight: '600', color: '#6b7280', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Add Custom Time</div>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <input
+                            type="time"
+                            value={availabilityInput}
+                            onChange={(e) => {
+                              setAvailabilityInput(e.target.value);
+                              if (availabilityError) setAvailabilityError('');
+                            }}
+                            style={{ flex: 1, padding: '8px 10px', borderRadius: '8px', border: '2px solid #e5e7eb', fontSize: '12px' }}
+                          />
+                          <select
+                            value={availabilityDuration}
+                            onChange={(e) => setAvailabilityDuration(Number(e.target.value))}
+                            style={{ padding: '8px 10px', borderRadius: '8px', border: '2px solid #e5e7eb', fontSize: '12px', minWidth: '90px' }}
+                          >
+                            <option value={30}>30 min</option>
+                            <option value={45}>45 min</option>
+                            <option value={60}>1 hour</option>
+                            <option value={90}>1.5 hours</option>
+                            <option value={120}>2 hours</option>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => addCustomTimeSlot(dateEntry.date)}
+                            style={{
+                              padding: '8px 12px',
+                              borderRadius: '8px',
+                              border: 'none',
+                              backgroundColor: '#111827',
+                              color: '#fff',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Add
+                          </button>
+                        </div>
+                      </div>
+
+                      <div style={{ marginTop: '8px', fontSize: '11px', color: '#6b7280' }}>
+                        <strong>Selected Times:</strong> {dateEntry.timeSlots.length > 0 ? `${dateEntry.timeSlots.length} slot(s)` : 'None selected'}
+                      </div>
+                    </div>
+                  ))}
+
+                  {availability.length === 0 && (
+                    <div style={{ textAlign: 'center', padding: '20px', color: '#6b7280', fontSize: '14px' }}>
+                      No dates added yet. Add a date above to set your availability.
+                    </div>
+                  )}
+
+                  {availabilityError && (
+                    <div style={{ marginTop: '12px', fontSize: '11px', color: '#b91c1c', fontWeight: '600', backgroundColor: '#fef2f2', padding: '8px 10px', borderRadius: '6px', border: '1px solid #fecaca' }}>
+                      Warning: {availabilityError}
+                    </div>
+                  )}
+                  {availabilitySuccess && (
+                    <div style={{ marginTop: '12px', fontSize: '11px', color: '#10b981', fontWeight: '600', backgroundColor: '#ecfdf5', padding: '8px 10px', borderRadius: '6px', border: '1px solid #a7f3d0' }}>
+                      {availabilitySuccess}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                style={{
+                  width: '100%',
+                  padding: '14px',
+                  backgroundColor: '#111827',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '12px',
+                  fontSize: '15px',
+                  fontWeight: '700',
+                  cursor: isSaving ? 'not-allowed' : 'pointer',
+                  opacity: isSaving ? 0.7 : 1,
+                }}
+              >
+                {isSaving ? 'SAVING...' : 'SAVE AVAILABILITY'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -640,7 +909,7 @@ export default function EditProfileModal({ isOpen, onClose, choreographerData, o
                                   color: '#10b981',
                                 }}
                               >
-                                ✓ {slot.time} ({slot.duration}min) ×
+                                ? {slot.time} ({slot.duration}min) ×
                               </button>
                             ))}
                         </div>
@@ -704,7 +973,7 @@ export default function EditProfileModal({ isOpen, onClose, choreographerData, o
 
                 {availabilityError && (
                   <div style={{ marginTop: '12px', fontSize: '11px', color: '#b91c1c', fontWeight: '600', backgroundColor: '#fef2f2', padding: '8px 10px', borderRadius: '6px', border: '1px solid #fecaca' }}>
-                    ⚠️ {availabilityError}
+                    Warning: {availabilityError}
                   </div>
                 )}
                 {availabilitySuccess && (
@@ -811,6 +1080,11 @@ export default function EditProfileModal({ isOpen, onClose, choreographerData, o
     </div>
   );
 }
+
+
+
+
+
 
 
 

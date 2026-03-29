@@ -5,8 +5,10 @@ export interface IUser extends Document {
     email: string;
     password: string;
     role: 'client' | 'choreographer' | 'super-admin';
-    status: 'active' | 'suspended';
+    status: 'active' | 'suspended' | 'deleted';
     approvalStatus?: 'pending' | 'approved' | 'rejected';
+    statusReason?: string;
+    statusUpdatedAt?: Date;
     gender?: string;
     dateOfBirth?: string;
     phoneNumber?: string;
@@ -58,12 +60,21 @@ const UserSchema = new Schema<IUser>(
         },
     status: {
         type: String,
-        enum: ['active', 'suspended'],
+        enum: ['active', 'suspended', 'deleted'],
         default: 'active',
     },
     approvalStatus: {
         type: String,
         enum: ['pending', 'approved', 'rejected'],
+        default: undefined,
+    },
+    statusReason: {
+        type: String,
+        default: '',
+        trim: true,
+    },
+    statusUpdatedAt: {
+        type: Date,
         default: undefined,
     },
         gender: {

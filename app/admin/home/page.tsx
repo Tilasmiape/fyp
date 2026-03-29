@@ -11,7 +11,8 @@ interface User {
   createdAt: string;
   danceStyles?: string[];
   approvalStatus?: 'pending' | 'approved' | 'rejected';
-  status?: 'active' | 'suspended';
+  status?: 'active' | 'suspended' | 'deleted';
+  statusReason?: string;
 }
 
 interface Stats {
@@ -34,7 +35,7 @@ export default function AdminDashboard() {
   // Filter states
   const [searchTerm, setSearchTerm] = useState('');
   const [danceStyleFilter, setDanceStyleFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended' | 'pending' | 'approved' | 'rejected'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended' | 'deleted' | 'pending' | 'approved' | 'rejected'>('all');
   
   const [stats, setStats] = useState<Stats>({
     totalUsers: 0,
@@ -120,7 +121,7 @@ export default function AdminDashboard() {
     if (statusFilter !== 'all') {
       if (activeTab === 'choreographers' && ['pending', 'approved', 'rejected'].includes(statusFilter)) {
         filtered = filtered.filter(u => u.approvalStatus === statusFilter);
-      } else if (['active', 'suspended'].includes(statusFilter)) {
+      } else if (['active', 'suspended', 'deleted'].includes(statusFilter)) {
         filtered = filtered.filter(u => u.status === statusFilter);
       }
     }
@@ -175,7 +176,8 @@ export default function AdminDashboard() {
 
   const handleSuspendUser = async (userId: string) => {
     try {
-      await updateUser(userId, { status: 'suspended' });
+      const reason = window.prompt('Reason for suspension?', '') || '';
+      await updateUser(userId, { status: 'suspended', statusReason: reason });
       alert('User suspended.');
     } catch (err: any) {
       alert(err.message || 'Failed to suspend user');
@@ -184,7 +186,7 @@ export default function AdminDashboard() {
 
   const handleRestoreUser = async (userId: string) => {
     try {
-      await updateUser(userId, { status: 'active' });
+      await updateUser(userId, { status: 'active', statusReason: '' });
       alert('User restored.');
     } catch (err: any) {
       alert(err.message || 'Failed to restore user');
@@ -194,10 +196,11 @@ export default function AdminDashboard() {
   const handleDeleteUser = async (userId: string) => {
     if (!confirm('Are you sure you want to delete this user?')) return;
     try {
+      const reason = window.prompt('Reason for deletion?', '') || '';
       const res = await fetch('/api/users', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: userId }),
+        body: JSON.stringify({ id: userId, reason }),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -513,6 +516,7 @@ export default function AdminDashboard() {
                   <option value="all">All Status</option>
                   <option value="active">Active</option>
                   <option value="suspended">Suspended</option>
+                  <option value="deleted">Deleted</option>
                   {activeTab === 'choreographers' && (
                     <>
                       <option value="pending">Pending Approval</option>

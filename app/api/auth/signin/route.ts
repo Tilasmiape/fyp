@@ -74,6 +74,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (user.status === 'suspended' || user.status === 'deleted') {
+      const reason = (user as any).statusReason || '';
+      const label = user.status === 'deleted' ? 'Account deleted' : 'Account suspended';
+      return NextResponse.json(
+        {
+          error: label,
+          reason: reason || 'Please contact support for more information.',
+          status: user.status,
+        },
+        { status: 403 }
+      );
+    }
+
     const token = jwt.sign(
       { userId: user._id, email: user.email, role: user.role },
       JWT_SECRET,
