@@ -15,6 +15,7 @@ interface SignupData {
   location: string;
   role: string;
   danceStyles: string[];
+  certificatePhoto: string; // base64 or url
 }
 
 export default function SignupPage() {
@@ -31,6 +32,7 @@ export default function SignupPage() {
     phoneNumber: '',
     location: '',
     danceStyles: [],
+    certificatePhoto: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -158,6 +160,17 @@ export default function SignupPage() {
     setErrors(prev => ({ ...prev, [name]: error }));
   };
 
+  const handleCertificatePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setFormData(prev => ({ ...prev, certificatePhoto: reader.result as string }));
+      setErrors(prev => ({ ...prev, certificatePhoto: '' }));
+    };
+    reader.readAsDataURL(file);
+  };
+
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
     Object.keys(formData).forEach(key => {
@@ -170,6 +183,10 @@ export default function SignupPage() {
         if (error) newErrors[key] = error;
       }
     });
+    // Require certificate photo for choreographers
+    if (formData.role === 'choreographer' && !formData.certificatePhoto) {
+      newErrors.certificatePhoto = 'Dance certificate photo is required';
+    }
     return newErrors;
   };
 
@@ -183,25 +200,42 @@ export default function SignupPage() {
         const response = await fetch('/api/auth/signup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            role: formData.role,
-            fullName: formData.fullName.trim(),
-            email: formData.email.trim().toLowerCase(),
-            password: formData.password,
-            gender: formData.gender,
-            dateOfBirth: formData.dob,
-            phoneNumber: formData.phoneNumber.replace(/\D/g, ''),
-            location: formData.location.trim(),
-            danceStyles: formData.role === 'choreographer' ? formData.danceStyles : [],
-          }),
-        });
+      body: JSON.stringify({
+        role: formData.role,
+        fullName: formData.fullName.trim(),
+        email: formData.email.trim().toLowerCase(),
+        password: formData.password,
+        gender: formData.gender,
+        dateOfBirth: formData.dob,
+        phoneNumber: formData.phoneNumber.replace(/\D/g, ''),
+        location: formData.location.trim(),
+        danceStyles: formData.role === 'choreographer' ? formData.danceStyles : [],
+        certificatePhoto: formData.role === 'choreographer' ? formData.certificatePhoto : '',
+      }),
+    });
 
-        if (response.ok) {
+  if (response.ok) {
           const result = await response.json();
           if (result.token) {
-            document.cookie = `authToken=${result.token}; path=/; max-age=86400`;
+            // Set cookie with SameSite=Lax to persist through Stripe redirect
+            document.cookie = `authToken=${result.token}; path=/; max-age=86400; SameSite=Lax`;
           }
-          router.push(formData.role === 'choreographer' ? '/choreographer/home' : '/client/home');
+          if (formData.role === 'choreographer') {
+            // Immediately redirect to Stripe Connect onboarding
+            const stripeRes = await fetch('/api/choreographer/stripe-connect', { method: 'POST', credentials: 'include' });
+            const stripeData = await stripeRes.json();
+            const stripeUrl = stripeData.url || stripeData.onboardingUrl;
+            if (stripeRes.ok && stripeUrl) {
+              window.location.href = stripeUrl;
+              return;
+            } else {
+              setErrors({ submit: stripeData.error || 'Stripe onboarding failed. Please try from your dashboard.' });
+              router.push('/choreographer/home');
+              return;
+            }
+          } else {
+            router.push('/client/home');
+          }
         } else {
           const errorData = await response.json();
           setErrors({ submit: errorData.message || 'Signup failed!' });
@@ -601,61 +635,91 @@ export default function SignupPage() {
               {errors.location && <span style={{ color: '#ff6b6b', fontSize: '11px', marginTop: '3px', display: 'block' }}>{errors.location}</span>}
             </div>
 
+
             {/* Dance Styles - Only for Choreographer */}
             {formData.role === 'choreographer' && (
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: '600', marginBottom: '5px', color: 'rgba(255, 255, 255, 0.95)', display: 'block' }}>
-                  Dance Styles * (Select all that apply)
-                </label>
-                <div style={{
-                  backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                  border: errors.danceStyles ? '1px solid #ff6b6b' : '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '6px',
-                  padding: '12px',
-                  maxHeight: '200px',
-                  overflowY: 'auto',
-                }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    {availableDanceStyles.map((style) => (
-                      <label
-                        key={style}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          cursor: 'pointer',
-                          padding: '6px',
-                          borderRadius: '4px',
-                          transition: 'background-color 0.2s',
-                          fontSize: '13px',
-                          color: 'rgba(255, 255, 255, 0.9)',
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={formData.danceStyles.includes(style)}
-                          onChange={() => handleDanceStyleToggle(style)}
+              <>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '600', marginBottom: '5px', color: 'rgba(255, 255, 255, 0.95)', display: 'block' }}>
+                    Dance Styles * (Select all that apply)
+                  </label>
+                  <div style={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    border: errors.danceStyles ? '1px solid #ff6b6b' : '1px solid rgba(255, 255, 255, 0.2)',
+                    borderRadius: '6px',
+                    padding: '12px',
+                    maxHeight: '200px',
+                    overflowY: 'auto',
+                  }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      {availableDanceStyles.map((style) => (
+                        <label
+                          key={style}
                           style={{
-                            width: '16px',
-                            height: '16px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
                             cursor: 'pointer',
-                            accentColor: '#fbbf24',
+                            padding: '6px',
+                            borderRadius: '4px',
+                            transition: 'background-color 0.2s',
+                            fontSize: '13px',
+                            color: 'rgba(255, 255, 255, 0.9)',
                           }}
-                        />
-                        {style}
-                      </label>
-                    ))}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={formData.danceStyles.includes(style)}
+                            onChange={() => handleDanceStyleToggle(style)}
+                            style={{
+                              width: '16px',
+                              height: '16px',
+                              cursor: 'pointer',
+                              accentColor: '#fbbf24',
+                            }}
+                          />
+                          {style}
+                        </label>
+                      ))}
+                    </div>
                   </div>
+                  {errors.danceStyles && <span style={{ color: '#ff6b6b', fontSize: '11px', marginTop: '3px', display: 'block' }}>{errors.danceStyles}</span>}
+                  {formData.danceStyles.length > 0 && (
+                    <p style={{ fontSize: '11px', color: '#4ade80', marginTop: '6px' }}>
+                      Selected: {formData.danceStyles.join(', ')}
+                    </p>
+                  )}
                 </div>
-                {errors.danceStyles && <span style={{ color: '#ff6b6b', fontSize: '11px', marginTop: '3px', display: 'block' }}>{errors.danceStyles}</span>}
-                {formData.danceStyles.length > 0 && (
-                  <p style={{ fontSize: '11px', color: '#4ade80', marginTop: '6px' }}>
-                    Selected: {formData.danceStyles.join(', ')}
-                  </p>
-                )}
-              </div>
+
+                {/* Certificate Photo - Only for Choreographer */}
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '600', marginBottom: '5px', color: 'rgba(255, 255, 255, 0.95)', display: 'block' }}>
+                    Dance Certificate Photo *
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleCertificatePhotoChange}
+                    style={{
+                      width: '100%',
+                      padding: '8px 0',
+                      borderRadius: '6px',
+                      border: errors.certificatePhoto ? '1px solid #ff6b6b' : '1px solid rgba(255, 255, 255, 0.2)',
+                      backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                      color: '#333',
+                      fontSize: '13px',
+                      outline: 'none',
+                      transition: 'all 0.3s ease',
+                    }}
+                  />
+                  {formData.certificatePhoto && (
+                    <img src={formData.certificatePhoto} alt="Certificate Preview" style={{ marginTop: '8px', maxWidth: '100%', maxHeight: '120px', borderRadius: '6px', border: '1px solid #eee' }} />
+                  )}
+                  {errors.certificatePhoto && <span style={{ color: '#ff6b6b', fontSize: '11px', marginTop: '3px', display: 'block' }}>{errors.certificatePhoto}</span>}
+                </div>
+              </>
             )}
 
             <button

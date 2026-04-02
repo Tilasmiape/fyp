@@ -80,6 +80,13 @@ interface APINotification {
   read: boolean;
 }
 
+interface StripeStatus {
+  connected: boolean;
+  onboarded: boolean;
+  chargesEnabled?: boolean;
+  payoutsEnabled?: boolean;
+}
+
 export default function ChoreographerHome() {
   const router = useRouter();
   const postVideoRef = useRef<HTMLInputElement>(null);
@@ -105,6 +112,11 @@ export default function ChoreographerHome() {
   const [feedbackSaving, setFeedbackSaving] = useState(false);
   const [feedbackTarget, setFeedbackTarget] = useState<Booking | null>(null);
 
+  // ── STRIPE STATE ──────────────────────────────────────────────────────────
+  const [stripeStatus, setStripeStatus] = useState<StripeStatus | null>(null);
+  const [stripeLoading, setStripeLoading] = useState(false);
+  const [stripeError, setStripeError] = useState('');
+  // ─────────────────────────────────────────────────────────────────────────
 
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(true);
@@ -114,7 +126,7 @@ export default function ChoreographerHome() {
     name: 'Tilasmi Subedi',
     email: 'tilasmi@example.com',
     phone: '9876543210',
-    bio: 'Professional choreographer with 5+ years of experience in Bollywood, Hip Hop, and Contemporary dance styles. I believe dance is a language that transcends barriers — my sessions focus on technique, expression, and joy. Based in Kathmandu, available for studio and in-house sessions.',
+    bio: 'Professional choreographer with 5+ years of experience in Bollywood, Hip Hop, and Contemporary dance styles.',
     location: 'Kathmandu, Nepal',
     pricePerSession: 2000,
     danceStyles: ['Bollywood', 'Hip Hop', 'Contemporary'],
@@ -153,6 +165,22 @@ export default function ChoreographerHome() {
           availability: Array.isArray(profile.availabilityTimes) ? profile.availabilityTimes : prev.availability,
           approvalStatus: profile.approvalStatus ?? prev.approvalStatus,
         }));
+
+        // ── Fetch Stripe status ──
+        try {
+          const sRes = await fetch('/api/choreographer/stripe-connect/status', { credentials: 'include' });
+          const sData = await sRes.json();
+          if (sRes.ok && sData?.success) {
+            setStripeStatus({
+              connected: sData.connected,
+              onboarded: sData.onboarded,
+              chargesEnabled: sData.chargesEnabled,
+              payoutsEnabled: sData.payoutsEnabled,
+            });
+          }
+        } catch {}
+        // ────────────────────────
+
       } catch (error) {
         console.error('Failed to load profile:', error);
       } finally {
@@ -163,20 +191,40 @@ export default function ChoreographerHome() {
     fetchProfile();
   }, []);
 
+  // ── Handle Stripe return from onboarding ─────────────────────────────────
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const stripeParam = sp.get('stripe');
+    if (stripeParam === 'success' || stripeParam === 'refresh') {
+      const refetch = async () => {
+        try {
+          const sRes = await fetch('/api/choreographer/stripe-connect/status', { credentials: 'include' });
+          const sData = await sRes.json();
+          if (sRes.ok && sData?.success) {
+            setStripeStatus({
+              connected: sData.connected,
+              onboarded: sData.onboarded,
+              chargesEnabled: sData.chargesEnabled,
+              payoutsEnabled: sData.payoutsEnabled,
+            });
+          }
+        } catch {}
+        window.history.replaceState({}, '', window.location.pathname);
+      };
+      refetch();
+    }
+  }, []);
+  // ─────────────────────────────────────────────────────────────────────────
+
   useEffect(() => {
     const loadNotifications = async () => {
       try {
-        const notifRes = await fetch('/api/notifications', {
-          method: 'GET',
-          credentials: 'include',
-        });
+        const notifRes = await fetch('/api/notifications', { method: 'GET', credentials: 'include' });
         const notifData = await notifRes.json();
         if (notifRes.ok && notifData?.success) {
           setApiNotifications(Array.isArray(notifData?.notifications) ? notifData.notifications : []);
         }
-      } catch {
-        // silent
-      }
+      } catch {}
     };
     loadNotifications();
   }, []);
@@ -186,12 +234,10 @@ export default function ChoreographerHome() {
       try {
         setBookingsLoading(true);
         setBookingsError('');
-        const res = await fetch('/api/choreographer/reservations', { method: 'GET', credentials: 'include' });
+        const res = await fetch('/api/choreographer/sessions', { method: 'GET', credentials: 'include' });
         const data = await res.json();
-        if (!res.ok || !data?.success) {
-          throw new Error(data?.error || 'Failed to load bookings');
-        }
-        const items = Array.isArray(data?.reservations) ? data.reservations : [];
+        if (!res.ok || !data?.success) throw new Error(data?.error || 'Failed to load bookings');
+        const items = Array.isArray(data?.sessions) ? data.sessions : [];
         setBookings(items.map((r: any) => ({
           id: r.id,
           clientName: r.client?.name || 'Client',
@@ -215,56 +261,27 @@ export default function ChoreographerHome() {
         setBookingsLoading(false);
       }
     };
-
     loadBookings();
   }, []);
 
   useEffect(() => {
     if (!profileLoaded || !choreographerData.email) return;
-
     const notifications: NotificationItem[] = [];
     if (choreographerData.approvalStatus === 'approved') {
-      notifications.push({
-        id: 'account-approved',
-        type: 'approved',
-        title: 'Account Approved',
-        message: 'Your choreographer account has been approved. You are now visible to clients.',
-      });
+      notifications.push({ id: 'account-approved', type: 'approved', title: 'Account Approved', message: 'Your choreographer account has been approved.' });
     }
     if (choreographerData.approvalStatus === 'pending') {
-      notifications.push({
-        id: 'account-pending',
-        type: 'pending',
-        title: 'Account Under Review',
-        message: 'Your choreographer account is under review. You will be notified once it is approved.',
-      });
+      notifications.push({ id: 'account-pending', type: 'pending', title: 'Account Under Review', message: 'Your choreographer account is under review.' });
     }
     if (choreographerData.approvalStatus === 'rejected') {
-      notifications.push({
-        id: 'account-rejected',
-        type: 'rejected',
-        title: 'Account Rejected',
-        message: 'Your choreographer account was rejected. Update your profile and contact support for review.',
-      });
+      notifications.push({ id: 'account-rejected', type: 'rejected', title: 'Account Rejected', message: 'Your choreographer account was rejected.' });
     }
-
     const rejectedVideos = (choreographerData.videos || []).filter(v => v.status === 'rejected');
     rejectedVideos.forEach(v => {
-      notifications.push({
-        id: `video-${v.id}`,
-        type: 'rejected',
-        title: `Video Rejected: ${v.title}`,
-        message: v.rejectionReason || 'No reason provided.',
-        date: v.uploadedAt,
-      });
+      notifications.push({ id: `video-${v.id}`, type: 'rejected', title: `Video Rejected: ${v.title}`, message: v.rejectionReason || 'No reason provided.', date: v.uploadedAt });
     });
-
-    const unreadReviews = apiNotifications.filter(
-      (n) => !n.read && n.type === 'review-received'
-    );
-
+    const unreadReviews = apiNotifications.filter(n => !n.read && n.type === 'review-received');
     if (notifications.length === 0 && unreadReviews.length === 0) return;
-
     const key = `choreoNotificationsPopupShown:${choreographerData.email}`;
     const alreadyShown = sessionStorage.getItem(key);
     if (!alreadyShown) {
@@ -273,32 +290,59 @@ export default function ChoreographerHome() {
     }
   }, [profileLoaded, choreographerData, apiNotifications]);
 
-  const updateBookingStatus = async (id: string, action: 'accept' | 'reject') => {
-    const promptLabel = action === 'accept'
-      ? 'Add a reason for accepting this session'
-      : 'Add a reason for rejecting this session';
-    const reason = window.prompt(promptLabel, '');
-    if (!reason || !reason.trim()) {
-      alert('A reason is required.');
-      return;
-    }
-
+  // ── Stripe connect: Stripe-hosted onboarding (Express Account Links) ───────
+  const handleConnectStripe = async () => {
+    setStripeError('');
+    setStripeLoading(true);
     try {
-      const res = await fetch(`/api/choreographer/reservations/${id}`, {
+      const res = await fetch('/api/choreographer/stripe-connect', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Failed to start Stripe onboarding');
+      if (data.alreadyConnected) {
+        const sRes = await fetch('/api/choreographer/stripe-connect/status', { credentials: 'include' });
+        const sData = await sRes.json();
+        if (sRes.ok && sData?.success) {
+          setStripeStatus({
+            connected: sData.connected,
+            onboarded: sData.onboarded,
+            chargesEnabled: sData.chargesEnabled,
+            payoutsEnabled: sData.payoutsEnabled,
+          });
+        }
+        return;
+      }
+      const url = data.url || data.onboardingUrl;
+      if (url) {
+        window.location.href = url;
+        return;
+      }
+      throw new Error('Stripe did not return an onboarding URL. Check STRIPE_SECRET_KEY and Connect settings.');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Failed to connect Stripe';
+      setStripeError(msg);
+    } finally {
+      setStripeLoading(false);
+    }
+  };
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const updateBookingStatus = async (id: string, action: 'accept' | 'reject') => {
+    const promptLabel = action === 'accept' ? 'Add a reason for accepting this session' : 'Add a reason for rejecting this session';
+    const reason = window.prompt(promptLabel, '');
+    if (!reason || !reason.trim()) { alert('A reason is required.'); return; }
+    try {
+      const res = await fetch(`/api/choreographer/sessions/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ action, reason: reason.trim() }),
       });
       const data = await res.json();
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.error || 'Failed to update booking');
-      }
-      setBookings(prev => prev.map(b => (
-        b.id === id
-          ? { ...b, status: data.status as Booking['status'], decisionReason: reason.trim() }
-          : b
-      )));
+      if (!res.ok || !data?.success) throw new Error(data?.error || 'Failed to update booking');
+      setBookings(prev => prev.map(b => b.id === id ? { ...b, status: data.status as Booking['status'], decisionReason: reason.trim() } : b));
     } catch (error: any) {
       alert(error.message || 'Failed to update booking');
     }
@@ -313,14 +357,8 @@ export default function ChoreographerHome() {
 
   const submitFeedback = async () => {
     if (!feedbackTarget) return;
-    if (!feedbackTarget.clientId) {
-      setFeedbackError('Client id is missing for this booking.');
-      return;
-    }
-    if (!feedbackComment.trim()) {
-      setFeedbackError('Please add a comment before sending.');
-      return;
-    }
+    if (!feedbackTarget.clientId) { setFeedbackError('Client id is missing for this booking.'); return; }
+    if (!feedbackComment.trim()) { setFeedbackError('Please add a comment before sending.'); return; }
     try {
       setFeedbackSaving(true);
       setFeedbackError('');
@@ -328,16 +366,10 @@ export default function ChoreographerHome() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          reciver_id: feedbackTarget.clientId || '',
-          booking_id: feedbackTarget.id,
-          comment: feedbackComment.trim(),
-        }),
+        body: JSON.stringify({ reciver_id: feedbackTarget.clientId || '', sessionId: feedbackTarget.id, comment: feedbackComment.trim() }),
       });
       const data = await res.json();
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.error || 'Failed to send feedback');
-      }
+      if (!res.ok || !data?.success) throw new Error(data?.error || 'Failed to send feedback');
       setShowFeedbackModal(false);
       setFeedbackTarget(null);
       setFeedbackComment('');
@@ -358,13 +390,8 @@ export default function ChoreographerHome() {
         credentials: 'include',
         body: JSON.stringify({ ...updatedData, availabilityTimes: updatedData.availability }),
       });
-
       const result = await response.json();
-      if (!response.ok) {
-        setProfileError(result?.error || 'Failed to save profile');
-        return;
-      }
-
+      if (!response.ok) { setProfileError(result?.error || 'Failed to save profile'); return; }
       const profile = result?.profile;
       if (profile) {
         setChoreographerData((prev) => ({
@@ -418,7 +445,6 @@ export default function ChoreographerHome() {
     if (!postVideoPreview) { setPostError('Please select a video'); return; }
     if (!postTitle.trim()) { setPostError('Please enter a title'); return; }
     if (choreographerData.videos.length >= MAX_VIDEOS) { setPostError(`Maximum ${MAX_VIDEOS} videos allowed`); return; }
-
     const newVideo: DanceVideo = {
       id: Date.now().toString(),
       url: postVideoPreview,
@@ -427,25 +453,15 @@ export default function ChoreographerHome() {
       uploadedAt: new Date().toISOString(),
       status: 'pending',
     };
-
-    const updatedData: Partial<ChoreographerData> = {
-      ...choreographerData,
-      videos: [newVideo, ...choreographerData.videos],
-    };
-
+    const updatedData: Partial<ChoreographerData> = { ...choreographerData, videos: [newVideo, ...choreographerData.videos] };
     const response = await fetch('/api/choreographer/profile', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify(updatedData),
     });
-
     const result = await response.json();
-    if (!response.ok) {
-      setPostError(result?.error || 'Failed to save video');
-      return;
-    }
-
+    if (!response.ok) { setPostError(result?.error || 'Failed to save video'); return; }
     const profile = result?.profile;
     if (profile) {
       setChoreographerData((prev) => ({
@@ -461,7 +477,6 @@ export default function ChoreographerHome() {
         profileImage: profile.profileImage ?? prev.profileImage,
       }));
     }
-
     setShowPostModal(false);
     setPostVideoPreview('');
     setPostTitle('');
@@ -488,12 +503,8 @@ export default function ChoreographerHome() {
 
   const filteredBookings = bookings.filter(b => {
     if (bookingTab === 'pending') return b.status === 'pending';
-    if (bookingTab === 'upcoming') {
-      return b.status === 'accepted' && !isPastSession(b.date, b.time);
-    }
-    if (bookingTab === 'history') {
-      return (b.status === 'accepted' && isPastSession(b.date, b.time)) || b.status === 'completed';
-    }
+    if (bookingTab === 'upcoming') return ['accepted', 'confirmed', 'booked'].includes(b.status) && !isPastSession(b.date, b.time);
+    if (bookingTab === 'history') return (['accepted', 'confirmed', 'booked'].includes(b.status) && isPastSession(b.date, b.time)) || b.status === 'completed';
     return false;
   });
 
@@ -501,17 +512,13 @@ export default function ChoreographerHome() {
   const approvedVideos = choreographerData.videos.filter(v => v.status === 'approved');
   const pendingVideos = choreographerData.videos.filter(v => v.status === 'pending');
   const rejectedVideos = choreographerData.videos.filter(v => v.status === 'rejected');
-  const unreadReviewCount = apiNotifications.filter(
-    (n) => !n.read && n.type === 'review-received'
-  ).length;
-  const totalNotifications =
-    (choreographerData.approvalStatus ? 1 : 0) + rejectedVideos.length + unreadReviewCount;
+  const unreadReviewCount = apiNotifications.filter(n => !n.read && n.type === 'review-received').length;
+  const totalNotifications = (choreographerData.approvalStatus ? 1 : 0) + rejectedVideos.length + unreadReviewCount;
+
   const postsEmptyMessage =
-    pendingVideos.length > 0
-      ? 'Your videos are pending review. Approved videos will appear here.'
-      : rejectedVideos.length > 0
-        ? 'Your videos were rejected. Update and re-upload to get approved.'
-        : 'No posts yet. Share your first dance video!';
+    pendingVideos.length > 0 ? 'Your videos are pending review. Approved videos will appear here.'
+    : rejectedVideos.length > 0 ? 'Your videos were rejected. Update and re-upload to get approved.'
+    : 'No posts yet. Share your first dance video!';
 
   const renderAvailabilitySection = () => (
     <div className="profile-section">
@@ -519,62 +526,23 @@ export default function ChoreographerHome() {
       {choreographerData.availability && choreographerData.availability.length > 0 ? (
         <>
           {choreographerData.availability.map((dateEntry) => (
-            <div
-              key={dateEntry.date}
-              style={{
-                marginBottom: '16px',
-                padding: '12px',
-                backgroundColor: 'rgba(251, 191, 36, 0.05)',
-                borderRadius: '8px',
-                border: '1px solid rgba(251, 191, 36, 0.2)',
-              }}
-            >
+            <div key={dateEntry.date} style={{ marginBottom: '16px', padding: '12px', backgroundColor: 'rgba(251,191,36,0.05)', borderRadius: '8px', border: '1px solid rgba(251,191,36,0.2)' }}>
               <div style={{ fontSize: '14px', fontWeight: '600', color: '#fbbf24', marginBottom: '8px' }}>
-                {new Date(dateEntry.date).toLocaleDateString('en-US', {
-                  weekday: 'long',
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric',
-                })}
+                {new Date(dateEntry.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
                 {dateEntry.timeSlots.map((slot, index) => (
-                  <div
-                    key={`${slot.time}-${slot.duration}-${index}`}
-                    style={{
-                      padding: '8px 10px',
-                      backgroundColor: 'rgba(251, 191, 36, 0.1)',
-                      borderRadius: '6px',
-                      border: '1px solid rgba(251, 191, 36, 0.3)',
-                      textAlign: 'center',
-                      fontSize: '12px',
-                      fontWeight: '600',
-                      color: '#fbbf24',
-                    }}
-                  >
+                  <div key={`${slot.time}-${slot.duration}-${index}`} style={{ padding: '8px 10px', backgroundColor: 'rgba(251,191,36,0.1)', borderRadius: '6px', border: '1px solid rgba(251,191,36,0.3)', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#fbbf24' }}>
                     {slot.time}
-                    <div style={{ fontSize: '10px', opacity: 0.8, marginTop: '2px' }}>
-                      {slot.duration} min
-                    </div>
+                    <div style={{ fontSize: '10px', opacity: 0.8, marginTop: '2px' }}>{slot.duration} min</div>
                   </div>
                 ))}
               </div>
-              <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', marginTop: '8px' }}>
-                {dateEntry.timeSlots.length} slot(s) available on this date
-              </div>
+              <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', marginTop: '8px' }}>{dateEntry.timeSlots.length} slot(s) available on this date</div>
             </div>
           ))}
-          <div
-            style={{
-              fontSize: '12px',
-              color: 'rgba(255,255,255,0.6)',
-              padding: '8px 12px',
-              backgroundColor: 'rgba(16, 185, 129, 0.1)',
-              borderRadius: '8px',
-              border: '1px solid rgba(16, 185, 129, 0.3)',
-            }}
-          >
-            ✓ {choreographerData.availability.length} date(s) with availability set. Clients can book these time slots.
+          <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)', padding: '8px 12px', backgroundColor: 'rgba(16,185,129,0.1)', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.3)' }}>
+            ✓ {choreographerData.availability.length} date(s) with availability set.
           </div>
         </>
       ) : (
@@ -583,599 +551,158 @@ export default function ChoreographerHome() {
     </div>
   );
 
+  // ── Stripe Banner Component ───────────────────────────────────────────────
+  const renderStripeBanner = () => {
+    if (stripeStatus === null) return null;
+    if (stripeStatus.onboarded) {
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 20px', marginBottom: '20px', borderRadius: '14px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)' }}>
+          <span style={{ fontSize: '20px' }}>✅</span>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '14px', color: '#34d399', fontFamily: 'Syne, sans-serif' }}>Stripe Connected</div>
+            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginTop: '2px' }}>You receive 88% of each session fee automatically.</div>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', padding: '16px 20px', marginBottom: '20px', borderRadius: '14px', background: 'rgba(99,91,255,0.12)', border: '1px solid rgba(99,91,255,0.4)' }}>
+        <div>
+          <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: '15px', color: '#fff', marginBottom: '4px' }}>
+            ⚠️ Connect Stripe to Receive Payments
+          </div>
+          <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.55)' }}>
+            Clients cannot pay you until your Stripe account is connected. You'll receive <strong style={{ color: '#fff' }}>88%</strong> of each session fee.
+          </div>
+          {stripeError && <div style={{ fontSize: '12px', color: '#f87171', marginTop: '6px' }}>✗ {stripeError}</div>}
+        </div>
+        <button
+          onClick={handleConnectStripe}
+          disabled={stripeLoading}
+          style={{ background: '#635bff', color: '#fff', border: 'none', borderRadius: '10px', padding: '11px 20px', fontWeight: 700, fontSize: '13px', cursor: stripeLoading ? 'not-allowed' : 'pointer', opacity: stripeLoading ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap', fontFamily: 'DM Sans, sans-serif' }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-6.99-2.109l-.92 5.555C5.175 22.99 8.385 24 11.714 24c2.641 0 4.843-.624 6.328-1.813 1.664-1.305 2.525-3.236 2.525-5.732 0-4.128-2.524-5.851-6.591-7.305z"/>
+          </svg>
+          {stripeLoading ? 'Connecting...' : 'Connect Stripe Account'}
+        </button>
+      </div>
+    );
+  };
+  // ─────────────────────────────────────────────────────────────────────────
+
   return (
     <>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
-
         * { box-sizing: border-box; }
-
-        .dash-root {
-          min-height: 100vh;
-          background: #0d0d0f;
-          font-family: 'DM Sans', sans-serif;
-          color: #fff;
-        }
-
-        /* NAV */
-        .nav {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 18px 48px;
-          border-bottom: 1px solid rgba(255,255,255,0.07);
-          position: sticky;
-          top: 0;
-          background: rgba(13,13,15,0.92);
-          backdrop-filter: blur(12px);
-          z-index: 100;
-        }
-        .nav-logo {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          font-family: 'Syne', sans-serif;
-          font-weight: 800;
-          font-size: 22px;
-          letter-spacing: -0.5px;
-          background: linear-gradient(135deg, #f0c040 0%, #e07b20 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-        }
-        .nav-logo img {
-          width: 36px;
-          height: 36px;
-          border-radius: 999px;
-          background: #fff;
-          box-shadow: 0 6px 16px rgba(0,0,0,0.25);
-          object-fit: cover;
-          transform: scale(1.2);
-        }
+        .dash-root { min-height: 100vh; background: #0d0d0f; font-family: 'DM Sans', sans-serif; color: #fff; }
+        .nav { display: flex; justify-content: space-between; align-items: center; padding: 18px 48px; border-bottom: 1px solid rgba(255,255,255,0.07); position: sticky; top: 0; background: rgba(13,13,15,0.92); backdrop-filter: blur(12px); z-index: 100; }
+        .nav-logo { display: flex; align-items: center; gap: 10px; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -0.5px; background: linear-gradient(135deg, #f0c040 0%, #e07b20 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .nav-logo img { width: 36px; height: 36px; border-radius: 999px; background: #fff; box-shadow: 0 6px 16px rgba(0,0,0,0.25); object-fit: cover; transform: scale(1.2); }
         .nav-right { display: flex; align-items: center; gap: 8px; }
-        .nav-btn {
-          background: none;
-          border: none;
-          color: rgba(255,255,255,0.6);
-          font-family: 'DM Sans', sans-serif;
-          font-size: 14px;
-          font-weight: 500;
-          cursor: pointer;
-          padding: 8px 16px;
-          border-radius: 8px;
-          transition: all 0.2s;
-        }
+        .nav-btn { background: none; border: none; color: rgba(255,255,255,0.6); font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500; cursor: pointer; padding: 8px 16px; border-radius: 8px; transition: all 0.2s; }
         .nav-btn:hover { color: #fff; background: rgba(255,255,255,0.07); }
-        .nav-btn-post {
-          background: linear-gradient(135deg, #f0c040 0%, #e07b20 100%);
-          color: #0d0d0f;
-          font-weight: 700;
-          border: none;
-          padding: 10px 22px;
-          border-radius: 10px;
-          font-size: 14px;
-          cursor: pointer;
-          font-family: 'DM Sans', sans-serif;
-          transition: opacity 0.2s;
-          display: flex;
-          align-items: center;
-          gap: 6px;
-        }
+        .nav-btn-post { background: linear-gradient(135deg, #f0c040 0%, #e07b20 100%); color: #0d0d0f; font-weight: 700; border: none; padding: 10px 22px; border-radius: 10px; font-size: 14px; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: opacity 0.2s; display: flex; align-items: center; gap: 6px; }
         .nav-btn-post:hover { opacity: 0.88; }
-        .nav-btn-logout {
-          background: rgba(255,255,255,0.06);
-          border: 1px solid rgba(255,255,255,0.1);
-          color: rgba(255,255,255,0.7);
-          padding: 8px 18px;
-          border-radius: 8px;
-          font-size: 14px;
-          cursor: pointer;
-          font-family: 'DM Sans', sans-serif;
-          transition: all 0.2s;
-        }
+        .nav-btn-logout { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.7); padding: 8px 18px; border-radius: 8px; font-size: 14px; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.2s; }
         .nav-btn-logout:hover { background: rgba(255,255,255,0.1); color: #fff; }
-
-        /* BODY LAYOUT */
-        .body {
-          display: flex;
-          min-height: calc(100vh - 65px);
-        }
-
-        /* SIDEBAR */
-        .sidebar {
-          width: 240px;
-          border-right: 1px solid rgba(255,255,255,0.07);
-          padding: 32px 16px;
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-          flex-shrink: 0;
-        }
-        .sidebar-label {
-          font-size: 11px;
-          font-weight: 600;
-          color: rgba(255,255,255,0.3);
-          letter-spacing: 1.2px;
-          text-transform: uppercase;
-          padding: 0 12px;
-          margin-bottom: 8px;
-          margin-top: 16px;
-        }
+        .body { display: flex; min-height: calc(100vh - 65px); }
+        .sidebar { width: 240px; border-right: 1px solid rgba(255,255,255,0.07); padding: 32px 16px; display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
+        .sidebar-label { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.3); letter-spacing: 1.2px; text-transform: uppercase; padding: 0 12px; margin-bottom: 8px; margin-top: 16px; }
         .sidebar-label:first-child { margin-top: 0; }
-        .sidebar-item {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          padding: 10px 14px;
-          border-radius: 10px;
-          cursor: pointer;
-          font-size: 14px;
-          font-weight: 500;
-          color: rgba(255,255,255,0.5);
-          transition: all 0.2s;
-          border: none;
-          background: none;
-          font-family: 'DM Sans', sans-serif;
-          width: 100%;
-          text-align: left;
-        }
+        .sidebar-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 10px; cursor: pointer; font-size: 14px; font-weight: 500; color: rgba(255,255,255,0.5); transition: all 0.2s; border: none; background: none; font-family: 'DM Sans', sans-serif; width: 100%; text-align: left; }
         .sidebar-item:hover { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.85); }
-        .sidebar-item.active {
-          background: rgba(240,192,64,0.12);
-          color: #f0c040;
-          font-weight: 600;
-        }
+        .sidebar-item.active { background: rgba(240,192,64,0.12); color: #f0c040; font-weight: 600; }
         .sidebar-icon { font-size: 16px; width: 20px; text-align: center; }
-
-        /* MAIN */
         .main { flex: 1; padding: 40px 48px; overflow-y: auto; }
-
-        /* STATS ROW */
-        .stats-row {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 16px;
-          margin-bottom: 40px;
-        }
-        .stat-card {
-          background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 16px;
-          padding: 22px 24px;
-          transition: border-color 0.2s;
-        }
+        .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 40px; }
+        .stat-card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 22px 24px; transition: border-color 0.2s; }
         .stat-card:hover { border-color: rgba(255,255,255,0.14); }
         .stat-label { font-size: 12px; color: rgba(255,255,255,0.45); margin-bottom: 8px; font-weight: 500; }
         .stat-value { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 700; }
-
-        /* SECTION HEADER */
-        .section-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 24px;
-        }
-        .section-title {
-          font-family: 'Syne', sans-serif;
-          font-size: 22px;
-          font-weight: 700;
-          color: #fff;
-        }
-
-        /* TABS */
-        .tabs {
-          display: flex;
-          gap: 4px;
-          background: rgba(255,255,255,0.05);
-          border-radius: 10px;
-          padding: 4px;
-          margin-bottom: 24px;
-          width: fit-content;
-        }
-        .tab {
-          padding: 8px 20px;
-          border-radius: 8px;
-          border: none;
-          background: none;
-          color: rgba(255,255,255,0.5);
-          font-size: 13px;
-          font-weight: 600;
-          cursor: pointer;
-          font-family: 'DM Sans', sans-serif;
-          transition: all 0.2s;
-          text-transform: capitalize;
-        }
-        .tab.active {
-          background: rgba(255,255,255,0.1);
-          color: #fff;
-        }
-
-        /* BOOKING CARD */
-        .booking-card {
-          background: rgba(255,255,255,0.03);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 14px;
-          padding: 20px 24px;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 12px;
-          transition: border-color 0.2s, background 0.2s;
-        }
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+        .section-title { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 700; color: #fff; }
+        .tabs { display: flex; gap: 4px; background: rgba(255,255,255,0.05); border-radius: 10px; padding: 4px; margin-bottom: 24px; width: fit-content; }
+        .tab { padding: 8px 20px; border-radius: 8px; border: none; background: none; color: rgba(255,255,255,0.5); font-size: 13px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.2s; text-transform: capitalize; }
+        .tab.active { background: rgba(255,255,255,0.1); color: #fff; }
+        .booking-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 20px 24px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; transition: border-color 0.2s, background 0.2s; }
         .booking-card:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.13); }
         .booking-name { font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700; margin-bottom: 6px; }
         .booking-meta { display: flex; gap: 18px; font-size: 13px; color: rgba(255,255,255,0.5); flex-wrap: wrap; }
         .booking-actions { display: flex; gap: 10px; align-items: center; }
-        .btn-accept {
-          background: rgba(16,185,129,0.15);
-          color: #10b981;
-          border: 1px solid rgba(16,185,129,0.3);
-          padding: 8px 18px;
-          border-radius: 8px;
-          font-size: 13px;
-          font-weight: 600;
-          cursor: pointer;
-          font-family: 'DM Sans', sans-serif;
-          transition: all 0.2s;
-        }
+        .btn-accept { background: rgba(16,185,129,0.15); color: #10b981; border: 1px solid rgba(16,185,129,0.3); padding: 8px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.2s; }
         .btn-accept:hover { background: rgba(16,185,129,0.25); }
-        .btn-reject {
-          background: rgba(239,68,68,0.12);
-          color: #ef4444;
-          border: 1px solid rgba(239,68,68,0.25);
-          padding: 8px 18px;
-          border-radius: 8px;
-          font-size: 13px;
-          font-weight: 600;
-          cursor: pointer;
-          font-family: 'DM Sans', sans-serif;
-          transition: all 0.2s;
-        }
+        .btn-reject { background: rgba(239,68,68,0.12); color: #ef4444; border: 1px solid rgba(239,68,68,0.25); padding: 8px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.2s; }
         .btn-reject:hover { background: rgba(239,68,68,0.22); }
-        .btn-feedback {
-          background: rgba(96,165,250,0.15);
-          color: #93c5fd;
-          border: 1px solid rgba(96,165,250,0.3);
-          padding: 8px 18px;
-          border-radius: 8px;
-          font-size: 13px;
-          font-weight: 600;
-          cursor: pointer;
-          font-family: 'DM Sans', sans-serif;
-          transition: all 0.2s;
-        }
+        .btn-feedback { background: rgba(96,165,250,0.15); color: #93c5fd; border: 1px solid rgba(96,165,250,0.3); padding: 8px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.2s; }
         .btn-feedback:hover { background: rgba(96,165,250,0.25); }
-        .badge {
-          padding: 6px 14px;
-          border-radius: 7px;
-          font-size: 12px;
-          font-weight: 600;
-        }
+        .badge { padding: 6px 14px; border-radius: 7px; font-size: 12px; font-weight: 600; }
         .badge-confirmed { background: rgba(59,130,246,0.15); color: #60a5fa; }
         .badge-completed { background: rgba(16,185,129,0.15); color: #34d399; }
         .badge-cancelled { background: rgba(239,68,68,0.12); color: #f87171; }
-
-        /* PROFILE VIEW */
-        .profile-layout {
-          display: grid;
-          grid-template-columns: 280px 1fr;
-          gap: 32px;
-        }
-        .profile-card {
-          background: rgba(255,255,255,0.03);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 20px;
-          padding: 32px 24px;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          text-align: center;
-          gap: 16px;
-          height: fit-content;
-        }
-        .profile-avatar {
-          width: 120px;
-          height: 120px;
-          border-radius: 20px;
-          object-fit: cover;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-family: 'Syne', sans-serif;
-          font-size: 48px;
-          font-weight: 800;
-          color: #fff;
-          overflow: hidden;
-          flex-shrink: 0;
-          border: 2px solid rgba(240,192,64,0.2);
-        }
+        .profile-layout { display: grid; grid-template-columns: 280px 1fr; gap: 32px; }
+        .profile-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 20px; padding: 32px 24px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 16px; height: fit-content; }
+        .profile-avatar { width: 120px; height: 120px; border-radius: 20px; object-fit: cover; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; font-family: 'Syne', sans-serif; font-size: 48px; font-weight: 800; color: #fff; overflow: hidden; flex-shrink: 0; border: 2px solid rgba(240,192,64,0.2); }
         .profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
         .profile-name { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; color: #fff; }
-        .profile-styles {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 6px;
-          justify-content: center;
-        }
-        .style-tag {
-          background: rgba(240,192,64,0.12);
-          color: #f0c040;
-          border: 1px solid rgba(240,192,64,0.2);
-          padding: 4px 12px;
-          border-radius: 20px;
-          font-size: 12px;
-          font-weight: 600;
-        }
-        .profile-price {
-          font-family: 'Syne', sans-serif;
-          font-size: 22px;
-          font-weight: 700;
-          color: #f0c040;
-        }
+        .profile-styles { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+        .style-tag { background: rgba(240,192,64,0.12); color: #f0c040; border: 1px solid rgba(240,192,64,0.2); padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .profile-price { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 700; color: #f0c040; }
         .profile-price-label { font-size: 11px; color: rgba(255,255,255,0.4); margin-top: -10px; }
-        .profile-stat-row {
-          display: flex;
-          gap: 16px;
-          width: 100%;
-        }
-        .profile-mini-stat {
-          flex: 1;
-          background: rgba(255,255,255,0.04);
-          border-radius: 12px;
-          padding: 12px 8px;
-          text-align: center;
-        }
+        .profile-stat-row { display: flex; gap: 16px; width: 100%; }
+        .profile-mini-stat { flex: 1; background: rgba(255,255,255,0.04); border-radius: 12px; padding: 12px 8px; text-align: center; }
         .profile-mini-val { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; }
         .profile-mini-label { font-size: 11px; color: rgba(255,255,255,0.4); margin-top: 2px; }
-        .btn-edit-profile {
-          width: 100%;
-          background: rgba(255,255,255,0.07);
-          border: 1px solid rgba(255,255,255,0.12);
-          color: #fff;
-          padding: 12px;
-          border-radius: 12px;
-          font-size: 14px;
-          font-weight: 600;
-          cursor: pointer;
-          font-family: 'DM Sans', sans-serif;
-          transition: all 0.2s;
-        }
+        .btn-edit-profile { width: 100%; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); color: #fff; padding: 12px; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.2s; }
         .btn-edit-profile:hover { background: rgba(255,255,255,0.12); }
-
-        /* PROFILE RIGHT */
         .profile-right { display: flex; flex-direction: column; gap: 28px; }
-        .profile-section {
-          background: rgba(255,255,255,0.03);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 20px;
-          padding: 28px;
-        }
-        .profile-section-title {
-          font-family: 'Syne', sans-serif;
-          font-size: 15px;
-          font-weight: 700;
-          color: rgba(255,255,255,0.5);
-          letter-spacing: 0.8px;
-          text-transform: uppercase;
-          margin-bottom: 16px;
-        }
-        .bio-text {
-          font-size: 15px;
-          line-height: 1.75;
-          color: rgba(255,255,255,0.75);
-        }
+        .profile-section { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 20px; padding: 28px; }
+        .profile-section-title { font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700; color: rgba(255,255,255,0.5); letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 16px; }
+        .bio-text { font-size: 15px; line-height: 1.75; color: rgba(255,255,255,0.75); }
         .contact-row { display: flex; gap: 24px; flex-wrap: wrap; }
         .contact-item { font-size: 14px; color: rgba(255,255,255,0.6); display: flex; align-items: center; gap: 8px; }
-        .contact-item span:first-child { font-size: 16px; }
-
-        /* VIDEO GRID */
-        .video-grid {
-          display: grid;
-          grid-template-columns: repeat(2, 1fr);
-          gap: 16px;
-        }
-        .video-item {
-          background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 14px;
-          overflow: hidden;
-        }
-        .video-item video {
-          width: 100%;
-          height: 140px;
-          object-fit: cover;
-          display: block;
-        }
-        .video-placeholder {
-          width: 100%;
-          height: 140px;
-          background: rgba(255,255,255,0.05);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 32px;
-        }
+        .video-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+        .video-item { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; overflow: hidden; }
+        .video-item video { width: 100%; height: 140px; object-fit: cover; display: block; }
+        .video-placeholder { width: 100%; height: 140px; background: rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center; font-size: 32px; }
         .video-info { padding: 12px 14px; }
         .video-title { font-size: 13px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .no-videos {
-          text-align: center;
-          padding: 40px 0;
-          color: rgba(255,255,255,0.3);
-          font-size: 14px;
-        }
-
-        /* POSTS GRID */
-        .posts-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-          gap: 20px;
-        }
-        .post-card {
-          background: rgba(255,255,255,0.03);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 18px;
-          overflow: hidden;
-          transition: border-color 0.2s, transform 0.2s;
-        }
+        .no-videos { text-align: center; padding: 40px 0; color: rgba(255,255,255,0.3); font-size: 14px; }
+        .posts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; }
+        .post-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 18px; overflow: hidden; transition: border-color 0.2s, transform 0.2s; }
         .post-card:hover { border-color: rgba(255,255,255,0.15); transform: translateY(-2px); }
-        .post-video-area {
-          height: 200px;
-          background: rgba(255,255,255,0.06);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 40px;
-          position: relative;
-          overflow: hidden;
-        }
+        .post-video-area { height: 200px; background: rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center; font-size: 40px; position: relative; overflow: hidden; }
         .post-video-area video { width: 100%; height: 100%; object-fit: cover; }
         .post-body { padding: 18px 20px; }
         .post-title { font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700; margin-bottom: 8px; }
         .post-caption { font-size: 13px; color: rgba(255,255,255,0.6); line-height: 1.6; margin-bottom: 14px; }
         .post-footer { display: flex; justify-content: space-between; align-items: center; }
-        .post-stats { display: flex; gap: 14px; font-size: 13px; color: rgba(255,255,255,0.4); }
         .post-date { font-size: 12px; color: rgba(255,255,255,0.3); }
-
-        /* EMPTY STATE */
         .empty { text-align: center; padding: 60px 0; color: rgba(255,255,255,0.3); font-size: 14px; }
-
-        /* MODAL OVERLAY */
-        .modal-overlay {
-          position: fixed;
-          inset: 0;
-          background: rgba(0,0,0,0.8);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 1000;
-          padding: 20px;
-          backdrop-filter: blur(4px);
-        }
-        .modal-box {
-          background: #141416;
-          border: 1px solid rgba(255,255,255,0.1);
-          border-radius: 24px;
-          padding: 36px;
-          max-width: 560px;
-          width: 100%;
-          max-height: 90vh;
-          overflow-y: auto;
-        }
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; backdrop-filter: blur(4px); }
+        .modal-box { background: #141416; border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; padding: 36px; max-width: 560px; width: 100%; max-height: 90vh; overflow-y: auto; }
         .modal-title { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; margin-bottom: 24px; }
         .modal-label { display: block; font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.5); letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 8px; }
-        .modal-input {
-          width: 100%;
-          background: rgba(255,255,255,0.06);
-          border: 1px solid rgba(255,255,255,0.12);
-          border-radius: 10px;
-          padding: 12px 14px;
-          color: #fff;
-          font-size: 14px;
-          font-family: 'DM Sans', sans-serif;
-          outline: none;
-          transition: border-color 0.2s;
-        }
+        .modal-input { width: 100%; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 12px 14px; color: #fff; font-size: 14px; font-family: 'DM Sans', sans-serif; outline: none; transition: border-color 0.2s; }
         .modal-input:focus { border-color: rgba(240,192,64,0.5); }
-        .modal-textarea {
-          width: 100%;
-          background: rgba(255,255,255,0.06);
-          border: 1px solid rgba(255,255,255,0.12);
-          border-radius: 10px;
-          padding: 12px 14px;
-          color: #fff;
-          font-size: 14px;
-          font-family: 'DM Sans', sans-serif;
-          outline: none;
-          resize: vertical;
-          min-height: 100px;
-          transition: border-color 0.2s;
-        }
+        .modal-textarea { width: 100%; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 12px 14px; color: #fff; font-size: 14px; font-family: 'DM Sans', sans-serif; outline: none; resize: vertical; min-height: 100px; transition: border-color 0.2s; }
         .modal-textarea:focus { border-color: rgba(240,192,64,0.5); }
-        .upload-zone {
-          width: 100%;
-          background: rgba(255,255,255,0.03);
-          border: 2px dashed rgba(255,255,255,0.15);
-          border-radius: 14px;
-          padding: 40px 20px;
-          text-align: center;
-          cursor: pointer;
-          font-size: 14px;
-          color: rgba(255,255,255,0.4);
-          transition: all 0.2s;
-          font-family: 'DM Sans', sans-serif;
-        }
+        .upload-zone { width: 100%; background: rgba(255,255,255,0.03); border: 2px dashed rgba(255,255,255,0.15); border-radius: 14px; padding: 40px 20px; text-align: center; cursor: pointer; font-size: 14px; color: rgba(255,255,255,0.4); transition: all 0.2s; font-family: 'DM Sans', sans-serif; }
         .upload-zone:hover { border-color: rgba(240,192,64,0.4); color: rgba(255,255,255,0.7); background: rgba(240,192,64,0.04); }
         .modal-actions { display: flex; gap: 12px; margin-top: 8px; }
-        .btn-post {
-          flex: 1;
-          background: linear-gradient(135deg, #f0c040 0%, #e07b20 100%);
-          color: #0d0d0f;
-          border: none;
-          border-radius: 12px;
-          padding: 14px;
-          font-size: 15px;
-          font-weight: 700;
-          cursor: pointer;
-          font-family: 'DM Sans', sans-serif;
-          transition: opacity 0.2s;
-        }
+        .btn-post { flex: 1; background: linear-gradient(135deg, #f0c040 0%, #e07b20 100%); color: #0d0d0f; border: none; border-radius: 12px; padding: 14px; font-size: 15px; font-weight: 700; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: opacity 0.2s; }
         .btn-post:hover { opacity: 0.88; }
-        .btn-cancel {
-          flex: 1;
-          background: rgba(255,255,255,0.07);
-          border: 1px solid rgba(255,255,255,0.1);
-          color: rgba(255,255,255,0.7);
-          border-radius: 12px;
-          padding: 14px;
-          font-size: 15px;
-          font-weight: 600;
-          cursor: pointer;
-          font-family: 'DM Sans', sans-serif;
-          transition: all 0.2s;
-        }
+        .btn-cancel { flex: 1; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.7); border-radius: 12px; padding: 14px; font-size: 15px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.2s; }
         .btn-cancel:hover { background: rgba(255,255,255,0.12); color: #fff; }
-        .error-msg {
-          background: rgba(239,68,68,0.12);
-          border: 1px solid rgba(239,68,68,0.25);
-          color: #f87171;
-          border-radius: 10px;
-          padding: 10px 14px;
-          font-size: 13px;
-          margin-bottom: 16px;
-        }
+        .error-msg { background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.25); color: #f87171; border-radius: 10px; padding: 10px 14px; font-size: 13px; margin-bottom: 16px; }
         .field-gap { display: flex; flex-direction: column; gap: 16px; }
         .divider { width: 100%; height: 1px; background: rgba(255,255,255,0.06); margin: 4px 0; }
-        .notice {
-          padding: 14px 18px;
-          border-radius: 12px;
-          border: 1px solid transparent;
-          font-size: 14px;
-          margin-bottom: 20px;
-        }
-        .notice-pending {
-          background: rgba(245,158,11,0.12);
-          border-color: rgba(245,158,11,0.35);
-          color: #fbbf24;
-        }
-        .notice-approved {
-          background: rgba(16,185,129,0.12);
-          border-color: rgba(16,185,129,0.35);
-          color: #34d399;
-        }
-        .notice-rejected {
-          background: rgba(239,68,68,0.12);
-          border-color: rgba(239,68,68,0.35);
-          color: #f87171;
-        }
-        .status-pill {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 6px 10px;
-          border-radius: 999px;
-          font-size: 11px;
-          font-weight: 700;
-        }
+        .notice { padding: 14px 18px; border-radius: 12px; border: 1px solid transparent; font-size: 14px; margin-bottom: 20px; }
+        .notice-pending { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.35); color: #fbbf24; }
+        .notice-approved { background: rgba(16,185,129,0.12); border-color: rgba(16,185,129,0.35); color: #34d399; }
+        .notice-rejected { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.35); color: #f87171; }
+        .status-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
         .pill-pending { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.35); }
         .pill-approved { background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.35); }
         .pill-rejected { background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.35); }
@@ -1189,9 +716,7 @@ export default function ChoreographerHome() {
             Step Out Studio
           </span>
           <div className="nav-right">
-            <button className="nav-btn-post" onClick={handleOpenPost}>
-              ＋ Post
-            </button>
+            <button className="nav-btn-post" onClick={handleOpenPost}>＋ Post</button>
             <button className="nav-btn" onClick={() => { setEditAvailabilityOnly(false); setShowEditProfile(true); }}>Edit Profile</button>
             <button className="nav-btn" onClick={() => setActiveTab('availability')}>Availability</button>
             <button className="nav-btn-logout" onClick={() => router.push('/signin')}>Logout</button>
@@ -1223,20 +748,23 @@ export default function ChoreographerHome() {
             <button className="sidebar-item" onClick={() => router.push('/choreographer/notifications')}>
               <span className="sidebar-icon">🔔</span> Notifications
               {totalNotifications > 0 && (
-                <span style={{
-                  marginLeft: 'auto',
-                  background: 'rgba(240,192,64,0.2)',
-                  color: '#f0c040',
-                  border: '1px solid rgba(240,192,64,0.35)',
-                  padding: '2px 8px',
-                  borderRadius: '999px',
-                  fontSize: '11px',
-                  fontWeight: 700,
-                }}>
+                <span style={{ marginLeft: 'auto', background: 'rgba(240,192,64,0.2)', color: '#f0c040', border: '1px solid rgba(240,192,64,0.35)', padding: '2px 8px', borderRadius: '999px', fontSize: '11px', fontWeight: 700 }}>
                   {totalNotifications}
                 </span>
               )}
             </button>
+
+            {/* ── STRIPE SIDEBAR ITEM ── */}
+            <button
+              className="sidebar-item"
+              onClick={stripeStatus?.onboarded ? undefined : handleConnectStripe}
+              style={{ cursor: stripeStatus?.onboarded ? 'default' : 'pointer', color: stripeStatus?.onboarded ? '#34d399' : stripeStatus !== null ? '#a78bfa' : 'rgba(255,255,255,0.5)' }}
+            >
+              <span className="sidebar-icon">💳</span>
+              {stripeStatus === null ? 'Stripe' : stripeStatus.onboarded ? 'Stripe ✓' : 'Connect Stripe'}
+            </button>
+            {/* ── END STRIPE SIDEBAR ITEM ── */}
+
             <div className="divider" style={{ margin: '12px 0' }} />
             <span className="sidebar-label">Overview</span>
             <div style={{ padding: '8px 14px' }}>
@@ -1253,48 +781,39 @@ export default function ChoreographerHome() {
 
           {/* MAIN */}
           <main className="main">
+
+            {/* Account status notices */}
             {choreographerData.approvalStatus && (
-              <div
-                className={`notice ${
-                  choreographerData.approvalStatus === 'approved'
-                    ? 'notice-approved'
-                    : choreographerData.approvalStatus === 'rejected'
-                      ? 'notice-rejected'
-                      : 'notice-pending'
-                }`}
-              >
+              <div className={`notice ${choreographerData.approvalStatus === 'approved' ? 'notice-approved' : choreographerData.approvalStatus === 'rejected' ? 'notice-rejected' : 'notice-pending'}`}>
                 {choreographerData.approvalStatus === 'approved' && 'Your choreographer account has been approved. You are now visible to clients.'}
                 {choreographerData.approvalStatus === 'rejected' && 'Your choreographer account was rejected. Update your profile and contact support for review.'}
                 {choreographerData.approvalStatus === 'pending' && 'Your choreographer account is under review. You will be notified once it is approved.'}
               </div>
             )}
             {approvedVideos.length > 0 && (
-              <div className="notice notice-approved">
-                {approvedVideos.length} video{approvedVideos.length === 1 ? '' : 's'} approved and visible on your profile.
-              </div>
+              <div className="notice notice-approved">{approvedVideos.length} video{approvedVideos.length === 1 ? '' : 's'} approved and visible on your profile.</div>
             )}
             {rejectedVideos.length > 0 && (
               <div className="notice notice-rejected">
                 {rejectedVideos.length} video{rejectedVideos.length === 1 ? '' : 's'} rejected. Update and re-upload if needed.
                 {rejectedVideos.some(v => v.rejectionReason) && (
                   <div style={{ marginTop: '8px', fontSize: '12px', color: 'rgba(255,255,255,0.75)' }}>
-                    {rejectedVideos.map(v => v.rejectionReason ? (
-                      <div key={v.id}><strong>{v.title}:</strong> {v.rejectionReason}</div>
-                    ) : null)}
+                    {rejectedVideos.map(v => v.rejectionReason ? <div key={v.id}><strong>{v.title}:</strong> {v.rejectionReason}</div> : null)}
                   </div>
                 )}
               </div>
             )}
             {pendingVideos.length > 0 && (
-              <div className="notice notice-pending">
-                {pendingVideos.length} video{pendingVideos.length === 1 ? '' : 's'} pending review.
-              </div>
+              <div className="notice notice-pending">{pendingVideos.length} video{pendingVideos.length === 1 ? '' : 's'} pending review.</div>
             )}
 
-            {/* ── BOOKINGS TAB ── */}
+            {/* ── STRIPE BANNER (always visible) ── */}
+            {renderStripeBanner()}
+            {/* ── END STRIPE BANNER ── */}
+
+            {/* BOOKINGS TAB */}
             {activeTab === 'bookings' && (
               <>
-                {/* Stats */}
                 <div className="stats-row">
                   <div className="stat-card">
                     <div className="stat-label">Total Earnings</div>
@@ -1359,9 +878,7 @@ export default function ChoreographerHome() {
                           <button className="btn-reject" onClick={() => updateBookingStatus(b.id, 'reject')}>Reject</button>
                         </>)}
                         {((b.status === 'completed') || (b.status === 'accepted' && isPastSession(b.date, b.time))) && (
-                          <button className="btn-feedback" onClick={() => openFeedbackModal(b)}>
-                            Send Feedback
-                          </button>
+                          <button className="btn-feedback" onClick={() => openFeedbackModal(b)}>Send Feedback</button>
                         )}
                         {b.status === 'accepted' && <span className="badge badge-confirmed">Accepted</span>}
                         {b.status === 'rejected' && <span className="badge badge-cancelled">Rejected</span>}
@@ -1374,7 +891,7 @@ export default function ChoreographerHome() {
               </>
             )}
 
-            {/* ── PROFILE TAB ── */}
+            {/* PROFILE TAB */}
             {activeTab === 'profile' && (
               <>
                 <div className="section-header">
@@ -1387,13 +904,9 @@ export default function ChoreographerHome() {
                 {isSavingProfile && <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.55)', marginBottom: '16px' }}>Saving profile...</div>}
 
                 <div className="profile-layout">
-                  {/* Left Card */}
                   <div className="profile-card">
                     <div className="profile-avatar">
-                      {choreographerData.profileImage
-                        ? <img src={choreographerData.profileImage} alt="profile" />
-                        : choreographerData.name.charAt(0)
-                      }
+                      {choreographerData.profileImage ? <img src={choreographerData.profileImage} alt="profile" /> : choreographerData.name.charAt(0)}
                     </div>
                     <div className="profile-name">{choreographerData.name}</div>
                     <div className="profile-styles">
@@ -1412,20 +925,36 @@ export default function ChoreographerHome() {
                         <div className="profile-mini-label">Rating</div>
                       </div>
                     </div>
+
+                    {/* ── Stripe card in profile sidebar ── */}
+                    {stripeStatus !== null && (
+                      <div style={{ width: '100%', padding: '14px', borderRadius: '12px', background: stripeStatus.onboarded ? 'rgba(16,185,129,0.1)' : 'rgba(99,91,255,0.12)', border: `1px solid ${stripeStatus.onboarded ? 'rgba(16,185,129,0.3)' : 'rgba(99,91,255,0.35)'}` }}>
+                        <div style={{ fontSize: '12px', fontWeight: 700, color: stripeStatus.onboarded ? '#34d399' : '#a78bfa', marginBottom: '6px' }}>
+                          {stripeStatus.onboarded ? '✅ Stripe Connected' : '💳 Stripe Not Connected'}
+                        </div>
+                        {stripeStatus.onboarded ? (
+                          <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>You receive 88% of each session fee.</div>
+                        ) : (
+                          <button
+                            onClick={handleConnectStripe}
+                            disabled={stripeLoading}
+                            style={{ width: '100%', marginTop: '6px', background: '#635bff', color: '#fff', border: 'none', borderRadius: '8px', padding: '9px', fontWeight: 700, fontSize: '12px', cursor: stripeLoading ? 'not-allowed' : 'pointer', opacity: stripeLoading ? 0.6 : 1, fontFamily: 'DM Sans, sans-serif' }}
+                          >
+                            {stripeLoading ? 'Connecting...' : 'Connect Stripe'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {/* ── End Stripe card ── */}
+
                     <button className="btn-edit-profile" onClick={() => { setEditAvailabilityOnly(false); setShowEditProfile(true); }}>✏️ Edit Profile</button>
                   </div>
 
-                  {/* Right sections */}
                   <div className="profile-right">
-                    {/* Bio */}
                     <div className="profile-section">
                       <div className="profile-section-title">About</div>
-                      <p className="bio-text">
-                        {choreographerData.bio || <span style={{ color: 'rgba(255,255,255,0.3)' }}>No bio added yet. Click Edit Profile to add one.</span>}
-                      </p>
+                      <p className="bio-text">{choreographerData.bio || <span style={{ color: 'rgba(255,255,255,0.3)' }}>No bio added yet.</span>}</p>
                     </div>
-
-                    {/* Contact */}
                     <div className="profile-section">
                       <div className="profile-section-title">Contact</div>
                       <div className="contact-row">
@@ -1434,42 +963,19 @@ export default function ChoreographerHome() {
                         <div className="contact-item"><span>📍</span><span>{choreographerData.location || 'Location not set'}</span></div>
                       </div>
                     </div>
-
-                    {/* Availability */}
                     {renderAvailabilitySection()}
-
-                    {/* Videos from Edit Profile */}
                     <div className="profile-section">
-                    <div className="profile-section-title">Dance Videos ({approvedVideos.length}/3)</div>
+                      <div className="profile-section-title">Dance Videos ({approvedVideos.length}/3)</div>
                       {approvedVideos.length === 0
-                        ? <div className="no-videos">
-                            <div style={{ fontSize: '32px', marginBottom: '8px' }}>🎬</div>
-                            No videos uploaded yet.<br />
-                            <span style={{ fontSize: '12px' }}>Go to Edit Profile → add up to 3 demo videos.</span>
-                          </div>
+                        ? <div className="no-videos"><div style={{ fontSize: '32px', marginBottom: '8px' }}>🎬</div>No videos uploaded yet.</div>
                         : <div className="video-grid">
                             {approvedVideos.map(v => (
                               <div key={v.id} className="video-item">
-                                {v.url
-                                  ? <video src={v.url} controls style={{ width: '100%', height: '140px', objectFit: 'cover', display: 'block' }} />
-                                  : <div className="video-placeholder">🎥</div>
-                                }
+                                {v.url ? <video src={v.url} controls style={{ width: '100%', height: '140px', objectFit: 'cover', display: 'block' }} /> : <div className="video-placeholder">🎥</div>}
                                 <div className="video-info">
                                   <div className="video-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
                                     <span>{v.title}</span>
-                                    {v.status && (
-                                      <span
-                                        className={`status-pill ${
-                                          v.status === 'approved'
-                                            ? 'pill-approved'
-                                            : v.status === 'rejected'
-                                              ? 'pill-rejected'
-                                              : 'pill-pending'
-                                        }`}
-                                      >
-                                        {v.status}
-                                      </span>
-                                    )}
+                                    {v.status && <span className={`status-pill ${v.status === 'approved' ? 'pill-approved' : v.status === 'rejected' ? 'pill-rejected' : 'pill-pending'}`}>{v.status}</span>}
                                   </div>
                                   {v.description && <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginTop: '6px' }}>{v.description}</div>}
                                 </div>
@@ -1483,49 +989,28 @@ export default function ChoreographerHome() {
               </>
             )}
 
-            {/* ── POSTS TAB ── */}
+            {/* POSTS TAB */}
             {activeTab === 'posts' && (
               <>
                 <div className="section-header">
                   <h2 className="section-title">My Posts</h2>
                   <button className="nav-btn-post" onClick={handleOpenPost}>＋ New Post</button>
                 </div>
-
                 {approvedVideos.length === 0
-                  ? <div className="empty">
-                      <div style={{ fontSize: '40px', marginBottom: '12px' }}>📭</div>
-                      {postsEmptyMessage}
-                    </div>
+                  ? <div className="empty"><div style={{ fontSize: '40px', marginBottom: '12px' }}>📭</div>{postsEmptyMessage}</div>
                   : <div className="posts-grid">
                       {approvedVideos.map(v => (
                         <div key={v.id} className="post-card">
                           <div className="post-video-area">
-                            {v.url
-                              ? <video src={v.url} controls style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                              : <span>🎬</span>
-                            }
+                            {v.url ? <video src={v.url} controls style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span>🎬</span>}
                           </div>
                           <div className="post-body">
                             <div className="post-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
                               <span>{v.title}</span>
-                              {v.status && (
-                                <span
-                                  className={`status-pill ${
-                                    v.status === 'approved'
-                                      ? 'pill-approved'
-                                      : v.status === 'rejected'
-                                        ? 'pill-rejected'
-                                        : 'pill-pending'
-                                  }`}
-                                >
-                                  {v.status}
-                                </span>
-                              )}
+                              {v.status && <span className={`status-pill ${v.status === 'approved' ? 'pill-approved' : v.status === 'rejected' ? 'pill-rejected' : 'pill-pending'}`}>{v.status}</span>}
                             </div>
                             <div className="post-caption">{v.description || 'No description added.'}</div>
-                            <div className="post-footer">
-                              <div className="post-date">{formatDate(v.uploadedAt)}</div>
-                            </div>
+                            <div className="post-footer"><div className="post-date">{formatDate(v.uploadedAt)}</div></div>
                           </div>
                         </div>
                       ))}
@@ -1534,13 +1019,13 @@ export default function ChoreographerHome() {
               </>
             )}
 
-            {/* â”€â”€ AVAILABILITY TAB â”€â”€ */}
+            {/* AVAILABILITY TAB */}
             {activeTab === 'availability' && (
               <>
                 <div className="section-header">
                   <h2 className="section-title">Availability</h2>
                   <button className="btn-edit-profile" style={{ width: 'auto', padding: '10px 20px' }} onClick={() => { setEditAvailabilityOnly(true); setShowEditProfile(true); }}>
-                    âœï¸ Edit Availability
+                    ✏️ Edit Availability
                   </button>
                 </div>
                 {renderAvailabilitySection()}
@@ -1565,53 +1050,30 @@ export default function ChoreographerHome() {
         <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowPostModal(false)}>
           <div className="modal-box">
             <div className="modal-title">Create a Post</div>
-
             {postError && <div className="error-msg">{postError}</div>}
-
             <div className="field-gap">
-              {/* Video Upload */}
               <div>
                 <label className="modal-label">Video *</label>
                 <input ref={postVideoRef} type="file" accept="video/*" onChange={handlePostVideoSelect} style={{ display: 'none' }} />
                 {!postVideoPreview
                   ? <button className="upload-zone" onClick={() => postVideoRef.current?.click()}>
                       <div style={{ fontSize: '28px', marginBottom: '8px' }}>📹</div>
-                      Click to upload a video<br />
-                      <span style={{ fontSize: '12px' }}>Max 3MB</span>
+                      Click to upload a video<br /><span style={{ fontSize: '12px' }}>Max 3MB</span>
                     </button>
                   : <div style={{ position: 'relative', borderRadius: '14px', overflow: 'hidden' }}>
                       <video src={postVideoPreview} controls style={{ width: '100%', height: '220px', objectFit: 'cover', display: 'block', borderRadius: '14px' }} />
-                      <button
-                        onClick={() => { setPostVideoPreview(''); }}
-                        style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: '50%', background: 'rgba(0,0,0,0.7)', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                      >✕</button>
+                      <button onClick={() => setPostVideoPreview('')} style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: '50%', background: 'rgba(0,0,0,0.7)', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
                     </div>
                 }
               </div>
-
-              {/* Title */}
               <div>
                 <label className="modal-label">Title *</label>
-                <input
-                  className="modal-input"
-                  type="text"
-                  value={postTitle}
-                  onChange={e => setPostTitle(e.target.value)}
-                  placeholder="Give your post a title..."
-                />
+                <input className="modal-input" type="text" value={postTitle} onChange={e => setPostTitle(e.target.value)} placeholder="Give your post a title..." />
               </div>
-
-              {/* Caption */}
               <div>
                 <label className="modal-label">Caption</label>
-                <textarea
-                  className="modal-textarea"
-                  value={postCaption}
-                  onChange={e => setPostCaption(e.target.value)}
-                  placeholder="Share something about this video — the story, the style, the vibe..."
-                />
+                <textarea className="modal-textarea" value={postCaption} onChange={e => setPostCaption(e.target.value)} placeholder="Share something about this video..." />
               </div>
-
               <div className="modal-actions">
                 <button className="btn-post" onClick={handleSubmitPost}>Post</button>
                 <button className="btn-cancel" onClick={() => setShowPostModal(false)}>Cancel</button>
@@ -1621,115 +1083,49 @@ export default function ChoreographerHome() {
         </div>
       )}
 
+      {/* FEEDBACK MODAL */}
       {showFeedbackModal && feedbackTarget && (
         <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowFeedbackModal(false)}>
           <div className="modal-box">
             <div className="modal-title">Send Feedback</div>
-
             <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginBottom: '12px' }}>
               {feedbackTarget.clientName} · {feedbackTarget.date} · {feedbackTarget.time}
             </div>
-
             {feedbackError && <div className="error-msg" style={{ marginBottom: '12px' }}>{feedbackError}</div>}
-
             <div className="field-gap">
               <div>
                 <label className="modal-label">Comment *</label>
-                <textarea
-                  className="modal-textarea"
-                  value={feedbackComment}
-                  onChange={(e) => setFeedbackComment(e.target.value)}
-                  placeholder="Share your feedback for the client..."
-                />
+                <textarea className="modal-textarea" value={feedbackComment} onChange={(e) => setFeedbackComment(e.target.value)} placeholder="Share your feedback for the client..." />
               </div>
               <div className="modal-actions">
-                <button className="btn-post" onClick={submitFeedback} disabled={feedbackSaving}>
-                  {feedbackSaving ? 'Sending...' : 'Send Feedback'}
-                </button>
-                <button
-                  className="btn-cancel"
-                  onClick={() => {
-                    setShowFeedbackModal(false);
-                    setFeedbackTarget(null);
-                  }}
-                >
-                  Cancel
-                </button>
+                <button className="btn-post" onClick={submitFeedback} disabled={feedbackSaving}>{feedbackSaving ? 'Sending...' : 'Send Feedback'}</button>
+                <button className="btn-cancel" onClick={() => { setShowFeedbackModal(false); setFeedbackTarget(null); }}>Cancel</button>
               </div>
             </div>
           </div>
         </div>
       )}
 
+      {/* NOTIFICATION POPUP */}
       {showNotificationPopup && (
-        <div
-          style={{
-            position: 'fixed',
-            right: '24px',
-            bottom: '24px',
-            width: '320px',
-            background: 'rgba(20,20,22,0.98)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: '14px',
-            padding: '16px 16px 14px',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.35)',
-            zIndex: 1000,
-          }}
-        >
+        <div style={{ position: 'fixed', right: '24px', bottom: '24px', width: '320px', background: 'rgba(20,20,22,0.98)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', padding: '16px 16px 14px', boxShadow: '0 20px 40px rgba(0,0,0,0.35)', zIndex: 1000 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
             <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '16px', fontWeight: 700 }}>Notifications</div>
-            <button
-              onClick={() => setShowNotificationPopup(false)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'rgba(255,255,255,0.6)',
-                cursor: 'pointer',
-                fontSize: '16px',
-                lineHeight: 1,
-              }}
-              aria-label="Dismiss notifications"
-            >
-              ×
-            </button>
+            <button onClick={() => setShowNotificationPopup(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: '16px', lineHeight: 1 }}>×</button>
           </div>
           <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '13px', marginBottom: '10px' }}>
             You have {totalNotifications} notification{totalNotifications === 1 ? '' : 's'}.
-            {unreadReviewCount > 0 && (
-              <span style={{ display: 'block', marginTop: '6px', color: 'rgba(255,255,255,0.7)' }}>
-                {unreadReviewCount} new client review{unreadReviewCount === 1 ? '' : 's'}.
-              </span>
-            )}
+            {unreadReviewCount > 0 && <span style={{ display: 'block', marginTop: '6px', color: 'rgba(255,255,255,0.7)' }}>{unreadReviewCount} new client review{unreadReviewCount === 1 ? '' : 's'}.</span>}
           </div>
           <button
-            onClick={() => {
-              setShowNotificationPopup(false);
-              fetch('/api/notifications', { method: 'PATCH', credentials: 'include' })
-                .catch(() => {});
-              router.push('/choreographer/notifications');
-            }}
-            style={{
-              width: '100%',
-              background: 'linear-gradient(135deg, #f0c040 0%, #e07b20 100%)',
-              border: 'none',
-              color: '#0d0d0f',
-              fontWeight: 700,
-              padding: '10px 12px',
-              borderRadius: '10px',
-              cursor: 'pointer',
-              fontSize: '13px',
-            }}
+            onClick={() => { setShowNotificationPopup(false); fetch('/api/notifications', { method: 'PATCH', credentials: 'include' }).catch(() => {}); router.push('/choreographer/notifications'); }}
+            style={{ width: '100%', background: 'linear-gradient(135deg, #f0c040 0%, #e07b20 100%)', border: 'none', color: '#0d0d0f', fontWeight: 700, padding: '10px 12px', borderRadius: '10px', cursor: 'pointer', fontSize: '13px' }}
           >
             View Notifications
           </button>
         </div>
       )}
+
     </>
   );
 }
-
-
-
-
-
-
