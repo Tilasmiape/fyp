@@ -13,7 +13,16 @@ interface AuthPayload {
 
 export async function GET(request: NextRequest) {
   try {
-    const token = request.cookies.get('authToken')?.value;
+    let token = request.cookies.get('authToken')?.value;
+
+    // Fallback to Authorization header
+    if (!token) {
+      const authHeader = request.headers.get('Authorization');
+      if (authHeader?.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+      }
+    }
+
     if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     let payload: AuthPayload;
@@ -31,7 +40,7 @@ export async function GET(request: NextRequest) {
     const notifications = await Notification.find({ userId: payload.userId })
       .sort({ createdAt: -1 })
       .limit(50)
-      .populate('reservationId', 'date time sessionCategory participantCount');
+      .populate('sessionId', 'date time sessionCategory participantCount');
 
     const items = notifications.map((n: any) => ({
       id: n._id,
@@ -40,7 +49,7 @@ export async function GET(request: NextRequest) {
       message: n.message,
       createdAt: n.createdAt,
       read: n.read,
-      reservationId: n.reservationId,
+      sessionId: n.sessionId,
     }));
 
     return NextResponse.json({ success: true, notifications: items }, { status: 200 });
@@ -52,7 +61,16 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const token = request.cookies.get('authToken')?.value;
+    let token = request.cookies.get('authToken')?.value;
+
+    // Fallback to Authorization header
+    if (!token) {
+      const authHeader = request.headers.get('Authorization');
+      if (authHeader?.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+      }
+    }
+
     if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     let payload: AuthPayload;

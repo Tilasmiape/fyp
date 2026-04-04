@@ -118,7 +118,10 @@ export default function ClientDashboard() {
 
   const markNotificationsRead = async () => {
     try {
-      await fetch('/api/notifications', { method: 'PATCH' });
+      const token = localStorage.getItem('authToken');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      await fetch('/api/notifications', { method: 'PATCH', headers });
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     } catch {}
   };
@@ -163,6 +166,7 @@ export default function ClientDashboard() {
 
   const handleLogout = () => {
     document.cookie = 'authToken=; path=/; max-age=0';
+    localStorage.removeItem('authToken');
     router.push('/signin');
   };
 
@@ -220,9 +224,13 @@ export default function ClientDashboard() {
     setReserveLoading(true);
     setReserveError('');
     try {
-      const res = await fetch('/api/reservations', {
+      const token = localStorage.getItem('authToken');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/sessions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           choreographerId: reserveFor.id,
           date: reserveDate,
@@ -277,7 +285,11 @@ export default function ClientDashboard() {
   useEffect(() => {
     const loadUser = async () => {
       try {
-        const res = await fetch('/api/auth/me');
+        const token = localStorage.getItem('authToken');
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch('/api/auth/me', { headers });
         const data = await res.json();
         if (res.ok && data?.success && data?.user?.fullName) {
           setUserName(data.user.fullName);
@@ -295,7 +307,11 @@ export default function ClientDashboard() {
       try {
         if (!userId) return;
         setNotificationsError('');
-        const res = await fetch('/api/notifications');
+        const token = localStorage.getItem('authToken');
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch('/api/notifications', { headers });
         const data = await res.json();
         if (!res.ok || !data?.success) throw new Error(data?.error || 'Failed to load notifications');
         const items = Array.isArray(data?.notifications) ? data.notifications : [];
@@ -323,10 +339,14 @@ export default function ClientDashboard() {
     const loadReminders = async () => {
       try {
         if (!userId) return;
-        const res = await fetch('/api/reservations');
+        const token = localStorage.getItem('authToken');
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch('/api/sessions', { headers });
         const data = await res.json();
         if (!res.ok || !data?.success) return;
-        const items: ReservationItem[] = Array.isArray(data?.reservations) ? data.reservations : [];
+        const items: ReservationItem[] = Array.isArray(data?.sessions) ? data.sessions : [];
         const now = new Date();
         const cutoff = 24 * 60 * 60 * 1000;
 
@@ -408,11 +428,15 @@ export default function ClientDashboard() {
       setAvailabilityLoading(true);
       setAvailabilityError('');
       try {
+        const token = localStorage.getItem('authToken');
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
         const params = new URLSearchParams({
           choreographerId: reserveFor.id,
           date: reserveDate,
         });
-        const res = await fetch(`/api/reservations?${params.toString()}`);
+        const res = await fetch(`/api/sessions?${params.toString()}`, { headers });
         const data = await res.json();
         if (!res.ok || !data?.success) {
           throw new Error(data?.error || 'Failed to check availability');

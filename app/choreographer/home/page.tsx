@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import EditProfileModal from '@/components/EditProfileModal';
+import StripeConnectModal from '@/components/StripeConnectModal';
 import { DateAvailability } from '@/lib/availability';
 
 interface Booking {
@@ -116,6 +117,7 @@ export default function ChoreographerHome() {
   const [stripeStatus, setStripeStatus] = useState<StripeStatus | null>(null);
   const [stripeLoading, setStripeLoading] = useState(false);
   const [stripeError, setStripeError] = useState('');
+  const [showStripeConnectModal, setShowStripeConnectModal] = useState(false);
   // ─────────────────────────────────────────────────────────────────────────
 
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -290,42 +292,26 @@ export default function ChoreographerHome() {
     }
   }, [profileLoaded, choreographerData, apiNotifications]);
 
-  // ── Stripe connect: Stripe-hosted onboarding (Express Account Links) ───────
-  const handleConnectStripe = async () => {
-    setStripeError('');
-    setStripeLoading(true);
+  // ── Stripe connect handler ────────────────────────────────────────────────
+  const handleConnectStripe = () => {
+    setShowStripeConnectModal(true);
+  };
+
+  const handleStripeConnectComplete = async () => {
+    setShowStripeConnectModal(false);
+    // Refresh stripe status
     try {
-      const res = await fetch('/api/choreographer/stripe-connect', {
-        method: 'POST',
-        credentials: 'include',
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Failed to start Stripe onboarding');
-      if (data.alreadyConnected) {
-        const sRes = await fetch('/api/choreographer/stripe-connect/status', { credentials: 'include' });
-        const sData = await sRes.json();
-        if (sRes.ok && sData?.success) {
-          setStripeStatus({
-            connected: sData.connected,
-            onboarded: sData.onboarded,
-            chargesEnabled: sData.chargesEnabled,
-            payoutsEnabled: sData.payoutsEnabled,
-          });
-        }
-        return;
+      const sRes = await fetch('/api/choreographer/stripe-connect/status', { credentials: 'include' });
+      const sData = await sRes.json();
+      if (sRes.ok && sData?.success) {
+        setStripeStatus({
+          connected: sData.connected,
+          onboarded: sData.onboarded,
+          chargesEnabled: sData.chargesEnabled,
+          payoutsEnabled: sData.payoutsEnabled,
+        });
       }
-      const url = data.url || data.onboardingUrl;
-      if (url) {
-        window.location.href = url;
-        return;
-      }
-      throw new Error('Stripe did not return an onboarding URL. Check STRIPE_SECRET_KEY and Connect settings.');
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Failed to connect Stripe';
-      setStripeError(msg);
-    } finally {
-      setStripeLoading(false);
-    }
+    } catch {}
   };
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -1126,6 +1112,13 @@ export default function ChoreographerHome() {
         </div>
       )}
 
+      {/* STRIPE CONNECT MODAL */}
+      {showStripeConnectModal && (
+        <StripeConnectModal
+          onClose={() => setShowStripeConnectModal(false)}
+          onComplete={handleStripeConnectComplete}
+        />
+      )}
     </>
   );
 }

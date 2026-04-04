@@ -3,7 +3,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 export interface IAttendance extends Document {
   choreographerId: mongoose.Types.ObjectId;
   clientId?: mongoose.Types.ObjectId;
-  bookingId?: mongoose.Types.ObjectId;
+  sessionId?: mongoose.Types.ObjectId;
   studentName: string;
   classTitle: string;
   classTime: string;
@@ -19,7 +19,7 @@ const AttendanceSchema = new Schema<IAttendance>(
   {
     choreographerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     clientId: { type: Schema.Types.ObjectId, ref: 'User', default: undefined },
-    bookingId: { type: Schema.Types.ObjectId, ref: 'Reservation', default: undefined },
+    sessionId: { type: Schema.Types.ObjectId, ref: 'Session', default: undefined },
     studentName: { type: String, required: true, trim: true },
     classTitle: { type: String, default: 'Student Session', trim: true },
     classTime: { type: String, default: '', trim: true },

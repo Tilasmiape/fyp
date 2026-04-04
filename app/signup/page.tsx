@@ -224,9 +224,8 @@ export default function SignupPage() {
             // Immediately redirect to Stripe Connect onboarding
             const stripeRes = await fetch('/api/choreographer/stripe-connect', { method: 'POST', credentials: 'include' });
             const stripeData = await stripeRes.json();
-            const stripeUrl = stripeData.url || stripeData.onboardingUrl;
-            if (stripeRes.ok && stripeUrl) {
-              window.location.href = stripeUrl;
+            if (stripeRes.ok && stripeData.onboardingUrl) {
+              window.location.href = stripeData.onboardingUrl;
               return;
             } else {
               setErrors({ submit: stripeData.error || 'Stripe onboarding failed. Please try from your dashboard.' });

@@ -13,7 +13,16 @@ interface AuthPayload {
 
 export async function GET(request: NextRequest) {
   try {
-    const token = request.cookies.get('authToken')?.value;
+    let token = request.cookies.get('authToken')?.value;
+    
+    // Fallback to Authorization header
+    if (!token) {
+      const authHeader = request.headers.get('Authorization');
+      if (authHeader?.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+      }
+    }
+
     if (!token) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

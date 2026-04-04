@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
     const body = await request.json();
-    const { fullName, email, password, dateOfBirth, phoneNumber, role, location } = body;
+    const { fullName, email, password, dateOfBirth, phoneNumber, role, location, certificatePhoto } = body;
 
     // do not allow clients to register as super-admin via signup
     if (role === 'super-admin') {
@@ -19,9 +19,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+
     if (!fullName || !email || !password || !role) {
       return NextResponse.json(
         { error: 'Missing required fields' },
+        { status: 400 }
+      );
+    }
+
+    // Require certificate photo for choreographers
+    if (role === 'choreographer' && !certificatePhoto) {
+      return NextResponse.json(
+        { error: 'Dance certificate photo is required for choreographers' },
         { status: 400 }
       );
     }
@@ -57,6 +66,7 @@ export async function POST(request: NextRequest) {
       location: location ? String(location).trim() : '',
       role,
       danceStyles: role === 'choreographer' ? body.danceStyles : [],
+      certificatePhoto: role === 'choreographer' ? certificatePhoto : '',
     });
 
     console.log('✓ User registered in DB:', newUser.email);

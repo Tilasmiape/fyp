@@ -4,7 +4,7 @@ import { connectDB } from '@/lib/db';
 import User from '@/models/User';
 import Availability from '@/models/Availability';
 import { getAvailabilityForDate } from '@/lib/availability';
-import Reservation from '@/models/Reservation';
+import Session from '@/models/Session';
 import Notification from '@/models/Notification';
 import { acquireSLock, acquireXLock, releaseSLock, releaseXLock } from '@/lib/locks';
 
@@ -18,7 +18,16 @@ interface AuthPayload {
 
 export async function POST(request: NextRequest) {
   try {
-    const token = request.cookies.get('authToken')?.value;
+    let token = request.cookies.get('authToken')?.value;
+    
+    // Fallback to Authorization header
+    if (!token) {
+      const authHeader = request.headers.get('Authorization');
+      if (authHeader?.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+      }
+    }
+
     if (!token) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -34,6 +43,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Only clients can reserve sessions' }, { status: 403 });
     }
 
+
     const body = await request.json();
     const {
       choreographerId,
@@ -45,6 +55,7 @@ export async function POST(request: NextRequest) {
       sessionCategory = 'individual',
       participantCount = 1,
       notes = '',
+      payNow = false, // New flag: true if booking and paying immediately
     } = body || {};
 
     if (!choreographerId || !date || !time || !sessionType) {
@@ -57,6 +68,19 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Enforce reservation rules
+    const today = new Date();
+    const sessionDate = new Date(date);
+    today.setHours(0,0,0,0);
+    sessionDate.setHours(0,0,0,0);
+
+    // If trying to reserve (not pay now) for today, block
+    if (!payNow && sessionDate.getTime() === today.getTime()) {
+      return NextResponse.json({ error: 'Same-day reservations are not allowed. You must book and pay immediately for same-day sessions.' }, { status: 400 });
+    }
+
+    // If payNow is true, allow same-day booking (handled in payment flow)
 
     await connectDB();
     const choreographer = await User.findOne({ _id: choreographerId, role: 'choreographer' }).select(
@@ -108,7 +132,7 @@ export async function POST(request: NextRequest) {
 
     try {
       // Check for time slot conflicts
-      const conflict = await Reservation.findOne({
+      const conflict = await Session.findOne({
         choreographerId,
         date: String(date),
         time: String(time),
@@ -128,7 +152,7 @@ export async function POST(request: NextRequest) {
     }
     const total = Math.round((pricePerSession * multiplier + 50) * 100) / 100;
 
-    const reservation = await Reservation.create({
+    const session = await Session.create({
       clientId: payload.userId,
       choreographerId,
       date: String(date),
@@ -143,6 +167,15 @@ export async function POST(request: NextRequest) {
       groupSessionMultiplier: multiplier,
       total,
       status: 'pending',
+      sessionStatus: 'reserved',
+      mustPayBy: (() => {
+        // Add a field for the latest payment time (5 hours before session)
+        const sessionDateTime = new Date(`${date}T${time}`);
+        sessionDateTime.setHours(sessionDateTime.getHours() - 5);
+        return sessionDateTime;
+      })(),
+      choreographerEarnings: Math.round(total * 0.88 * 100) / 100,
+      platformFee: Math.round(total * 0.12 * 100) / 100,
     });
 
     // Create notification for choreographer
@@ -154,10 +187,10 @@ export async function POST(request: NextRequest) {
       type: 'session-requested',
       title: 'New Session Request',
       message: notificationMessage,
-      reservationId: reservation._id,
+      sessionId: session._id,
     });
 
-      return NextResponse.json({ success: true, reservationId: reservation._id }, { status: 201 });
+      return NextResponse.json({ success: true, sessionId: session._id }, { status: 201 });
     } finally {
       await releaseXLock(lockKey, lockOwner);
     }
@@ -169,7 +202,16 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const token = request.cookies.get('authToken')?.value;
+    let token = request.cookies.get('authToken')?.value;
+    
+    // Fallback to Authorization header
+    if (!token) {
+      const authHeader = request.headers.get('Authorization');
+      if (authHeader?.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+      }
+    }
+
     if (!token) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -198,13 +240,13 @@ export async function GET(request: NextRequest) {
       }
 
       try {
-        const reservations = await Reservation.find({
+        const sessions = await Session.find({
         choreographerId,
         date: String(date),
         status: { $nin: ['rejected', 'cancelled'] },
         }).select('time duration');
 
-        const reservedTimes = Array.from(new Set(reservations.map((r: any) => r.time))).sort();
+        const reservedTimes = Array.from(new Set(sessions.map((r: any) => r.time))).sort();
         return NextResponse.json({ success: true, reservedTimes }, { status: 200 });
       } finally {
         await releaseSLock(sKey);
@@ -215,26 +257,35 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Only clients can view sessions' }, { status: 403 });
     }
 
-    const reservations = await Reservation.find({ clientId: payload.userId, status: { $in: ['accepted', 'confirmed'] } })
+    const sessions = await Session.find({ clientId: payload.userId })
       .sort({ createdAt: -1 })
       .populate('choreographerId', 'fullName profileImage');
 
-    const items = reservations.map((r: any) => ({
-      id: r._id,
-      date: r.date,
-      time: r.time,
-      sessionType: r.sessionType,
-      location: r.location || '',
-      status: r.status,
-      total: r.total || 0,
-      choreographer: {
-        id: r.choreographerId?._id || '',
-        name: r.choreographerId?.fullName || '',
-        profileImage: r.choreographerId?.profileImage || '',
-      },
-    }));
+    const items = sessions.map((r: any) => {
+      let sessionStatus: 'reserved' | 'booked' | 'cancelled' = 'reserved';
+      if (r.status === 'confirmed' || r.paymentStatus === 'paid') sessionStatus = 'booked';
+      if (['rejected', 'cancelled'].includes(r.status)) sessionStatus = 'cancelled';
+      if (r.status === 'pending') sessionStatus = 'reserved';
 
-    return NextResponse.json({ success: true, reservations: items }, { status: 200 });
+      return {
+        id: r._id,
+        date: r.date,
+        time: r.time,
+        sessionType: r.sessionType,
+        location: r.location || '',
+        status: r.status,
+        sessionStatus: r.sessionStatus || sessionStatus,
+        paymentStatus: r.paymentStatus || 'unpaid',
+        total: r.total || 0,
+        choreographer: {
+          id: r.choreographerId?._id || '',
+          name: r.choreographerId?.fullName || '',
+          profileImage: r.choreographerId?.profileImage || '',
+        },
+      };
+    });
+
+    return NextResponse.json({ success: true, sessions: items }, { status: 200 });
   } catch (error: any) {
     console.error('Get reservations error:', error);
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });

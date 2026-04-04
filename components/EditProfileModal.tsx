@@ -909,7 +909,7 @@ export default function EditProfileModal({ isOpen, onClose, availabilityOnly, ch
                                   color: '#10b981',
                                 }}
                               >
-                                ? {slot.time} ({slot.duration}min) ×
+                                {slot.time} ({slot.duration}min) ×
                               </button>
                             ))}
                         </div>
@@ -1080,20 +1080,3 @@ export default function EditProfileModal({ isOpen, onClose, availabilityOnly, ch
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

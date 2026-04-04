@@ -82,7 +82,7 @@ export default function ChoreographerAttendancePage() {
     const loadBookings = async () => {
       try {
         setBookingsError('');
-        const res = await fetch('/api/choreographer/reservations', {
+        const res = await fetch('/api/choreographer/sessions', {
           method: 'GET',
           credentials: 'include',
         });
@@ -90,7 +90,7 @@ export default function ChoreographerAttendancePage() {
         if (!res.ok || !data?.success) {
           throw new Error(data?.error || 'Failed to load bookings');
         }
-        const items = Array.isArray(data.reservations) ? data.reservations : [];
+        const items = Array.isArray(data.sessions) ? data.sessions : [];
         const mapped: BookingItem[] = items.map((item: any) => ({
           id: String(item.id),
           clientId: String(item.client?.id || ''),

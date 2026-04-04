@@ -15,6 +15,7 @@ export interface IUser extends Document {
     bio?: string;
     location?: string;
     profileImage?: string;
+    certificatePhoto?: string;
     danceStyles?: string[];
     pricePerSession?: number;
     groupSessionPriceMultiplier?: number;
@@ -27,6 +28,12 @@ export interface IUser extends Document {
         status: 'pending' | 'approved' | 'rejected';
         rejectionReason?: string;
     }[];
+    stripeAccountId?: string;       // ✅ top-level stripe account id
+    stripeOnboarded?: boolean;      // ✅ added
+    stripeConnectStatus?: 'not_connected' | 'pending' | 'verified' | 'restricted';
+    bankAccountVerified?: boolean;
+    totalEarnings?: number;
+    totalPayoutsReceived?: number;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -58,25 +65,25 @@ const UserSchema = new Schema<IUser>(
             enum: ['client', 'choreographer', 'super-admin'],
             default: 'client',
         },
-    status: {
-        type: String,
-        enum: ['active', 'suspended', 'deleted'],
-        default: 'active',
-    },
-    approvalStatus: {
-        type: String,
-        enum: ['pending', 'approved', 'rejected'],
-        default: undefined,
-    },
-    statusReason: {
-        type: String,
-        default: '',
-        trim: true,
-    },
-    statusUpdatedAt: {
-        type: Date,
-        default: undefined,
-    },
+        status: {
+            type: String,
+            enum: ['active', 'suspended', 'deleted'],
+            default: 'active',
+        },
+        approvalStatus: {
+            type: String,
+            enum: ['pending', 'approved', 'rejected'],
+            default: undefined,
+        },
+        statusReason: {
+            type: String,
+            default: '',
+            trim: true,
+        },
+        statusUpdatedAt: {
+            type: Date,
+            default: undefined,
+        },
         gender: {
             type: String,
             enum: ['male', 'female', 'other', 'prefer_not_to_say'],
@@ -106,6 +113,10 @@ const UserSchema = new Schema<IUser>(
             type: [String],
             default: [],
         },
+        certificatePhoto: {
+            type: String,
+            default: '',
+        },
         pricePerSession: {
             type: Number,
             default: 0,
@@ -130,14 +141,40 @@ const UserSchema = new Schema<IUser>(
             ],
             default: [],
         },
+        // Stripe payment fields
+        stripeAccountId: {
+            type: String,
+            default: '',
+            trim: true,
+        },
+        stripeOnboarded: {          // ✅ added
+            type: Boolean,
+            default: false,
+        },
+        stripeConnectStatus: {
+            type: String,
+            enum: ['not_connected', 'pending', 'verified', 'restricted'],
+            default: 'not_connected',
+        },
+        bankAccountVerified: {
+            type: Boolean,
+            default: false,
+        },
+        totalEarnings: {
+            type: Number,
+            default: 0,
+        },
+        totalPayoutsReceived: {
+            type: Number,
+            default: 0,
+        },
     },
     {
         timestamps: true,
-        strict: false, // Allow writing fields not explicitly defined to prevent silent drops
+        strict: false,
     }
 );
 
-// Delete cached model to ensure schema changes take effect across hot reloads
 if (mongoose.models.User) {
     delete (mongoose.models as any)['User'];
 }

@@ -272,6 +272,34 @@ export default function AdminDashboard() {
             }}>
             Pending Requests
           </button>
+          <button
+            onClick={() => router.push('/admin/sessions')}
+            style={{
+              background: 'rgba(255, 255, 255, 0.1)',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              color: '#fff',
+              fontSize: '14px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              padding: '8px 16px',
+              borderRadius: '8px',
+            }}>
+            💳 Payment Tracking
+          </button>
+          <button
+            onClick={() => router.push('/admin/payouts')}
+            style={{
+              background: 'rgba(255, 255, 255, 0.1)',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              color: '#fff',
+              fontSize: '14px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              padding: '8px 16px',
+              borderRadius: '8px',
+            }}>
+            💰 Payout Management
+          </button>
           <button 
             onClick={() => router.push('/admin/videos')}
             style={{

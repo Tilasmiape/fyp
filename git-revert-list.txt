@@ -1,0 +1,49 @@
+﻿ M app/admin/home/page.tsx
+ M app/api/auth/me/route.ts
+ M app/api/auth/signin/route.ts
+ D app/api/choreographer/reservations/[id]/route.ts
+ D app/api/choreographer/reservations/route.ts
+ M app/api/client/feedback/route.ts
+ M app/api/notifications/route.ts
+ D app/api/reservations/route.ts
+ M app/choreographer/attendance/page.tsx
+ M app/choreographer/home/page.tsx
+ M app/client/home/page.tsx
+ M app/client/sessions/page.tsx
+ M app/signin/page.tsx
+ M app/signup/page.tsx
+ M components/Navbar.tsx
+ M models/Attendance.ts
+ M models/Feedback.ts
+ M models/Notification.ts
+ D models/Reservation.ts
+ M models/Score.ts
+ M models/User.ts
+ M package-lock.json
+ M package.json
+ M tsconfig.json
+?? ENV_SETUP.md
+?? IMPLEMENTATION_SUMMARY.md
+?? MONGODB_PAYMENTS_GUIDE.md
+?? PAYMENT_BUTTON_IMPLEMENTATION.md
+?? PAYOUT_SYSTEM_GUIDE.md
+?? QUICK_REFERENCE.md
+?? STRIPE_KEY_SETUP.md
+?? app/admin/payouts/
+?? app/admin/sessions/
+?? app/api/admin/payments/
+?? app/api/admin/payouts/
+?? app/api/admin/sessions/
+?? app/api/choreographer/sessions/
+?? app/api/choreographer/stripe-connect/
+?? app/api/cron/
+?? app/api/sessions/
+?? app/api/stripe/
+?? app/choreographer/sessions/
+?? components/PaymentModal.tsx
+?? git-revert-list.txt
+?? lib/stripe.ts
+?? models/Payout.ts
+?? models/Session.ts
+?? scripts/
+?? vercel.json

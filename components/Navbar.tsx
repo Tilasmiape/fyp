@@ -37,7 +37,8 @@ export default function Navbar() {
   const handleLogout = async () => {
     // Call logout API
     await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/sign-in');
+    localStorage.removeItem('authToken');
+    router.push('/signin');
   };
 
   const getDashboardLink = (role: string) => {

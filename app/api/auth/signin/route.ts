@@ -32,14 +32,7 @@ export async function POST(request: NextRequest) {
         { expiresIn: '24h' }
       );
 
-      // Optionally create the admin in the database if you want
-      // await User.updateOne(
-      //   { email: email.toLowerCase() },
-      //   { email: email.toLowerCase(), role: 'super-admin', password },
-      //   { upsert: true }
-      // );
-
-      return NextResponse.json(
+      const response = NextResponse.json(
         {
           success: true,
           user: {
@@ -52,6 +45,16 @@ export async function POST(request: NextRequest) {
         },
         { status: 200 }
       );
+
+      response.cookies.set('authToken', token, {
+        path: '/',
+        maxAge: 86400, // 24 hours
+        sameSite: 'lax',
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+      });
+
+      return response;
     }
 
     await connectDB();
@@ -95,7 +98,7 @@ export async function POST(request: NextRequest) {
 
     console.log('✓ User logged in:', user.email);
 
-    return NextResponse.json(
+    const response = NextResponse.json(
       {
         success: true,
         user: {
@@ -108,6 +111,16 @@ export async function POST(request: NextRequest) {
       },
       { status: 200 }
     );
+
+    response.cookies.set('authToken', token, {
+      path: '/',
+      maxAge: 86400, // 24 hours
+      sameSite: 'lax',
+      httpOnly: false,
+      secure: process.env.NODE_ENV === 'production',
+    });
+
+    return response;
 
   } catch (error) {
     console.error('Signin error:', error);

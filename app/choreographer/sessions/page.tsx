@@ -91,9 +91,8 @@ export default function ChoreographerSessionsPage() {
         credentials: 'include',
       });
       const data = await res.json();
-      const url = data?.url || data?.onboardingUrl;
-      if (res.ok && url) {
-        window.location.href = url;
+      if (res.ok && data?.onboardingUrl) {
+        window.location.href = data.onboardingUrl;
       }
     } catch (err) {
       setError('Failed to connect Stripe');

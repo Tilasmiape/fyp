@@ -24,7 +24,6 @@ function getAuthPayload(request: NextRequest): AuthPayload | null {
   }, {} as Record<string, string>);
   const token = cookies['authToken'];
   if (!token) return null;
-
   try {
     return jwt.verify(token, JWT_SECRET) as AuthPayload;
   } catch {
@@ -36,49 +35,44 @@ export async function GET(request: NextRequest) {
   try {
     await connectDB();
     const auth = getAuthPayload(request);
-
-    if (!auth) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const user = await User.findById(auth.userId).select(
-      'fullName email phoneNumber bio location pricePerSession danceStyles profileImage danceVideos role approvalStatus'
+      // ✅ Added Stripe fields
+      'fullName email phoneNumber bio location pricePerSession danceStyles profileImage danceVideos role approvalStatus stripeConnectAccountId stripeConnectStatus stripeOnboarded stripeAccountId'
     );
+    if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-
-    // Fetch availability from separate collection
     const availabilityDocs = await Availability.find({ choreographerId: auth.userId }).select('date timeSlots -_id');
 
-    return NextResponse.json(
-      {
-        success: true,
-        profile: {
-          name: user.fullName || '',
-          email: user.email || '',
-          phone: user.phoneNumber || '',
-          bio: user.bio || '',
-          location: user.location || '',
-          pricePerSession: user.pricePerSession || 0,
-          danceStyles: user.danceStyles || [],
-          profileImage: user.profileImage || '',
-          approvalStatus: user.approvalStatus || undefined,
-          availabilityTimes: availabilityDocs,
-          videos: (user.danceVideos || []).map((video: any) => ({
-            id: video.id,
-            url: video.url,
-            title: video.title,
-            description: video.description || '',
-            uploadedAt: video.uploadedAt ? new Date(video.uploadedAt).toISOString() : new Date().toISOString(),
-            status: video.status,
-            rejectionReason: video.rejectionReason || '',
-          })),
-        },
+    return NextResponse.json({
+      success: true,
+      profile: {
+        name: user.fullName || '',
+        email: user.email || '',
+        phone: user.phoneNumber || '',
+        bio: user.bio || '',
+        location: user.location || '',
+        pricePerSession: user.pricePerSession || 0,
+        danceStyles: user.danceStyles || [],
+        profileImage: user.profileImage || '',
+        approvalStatus: user.approvalStatus || undefined,
+        availabilityTimes: availabilityDocs,
+        // ✅ Stripe fields exposed to frontend
+        stripeAccountId: user.stripeAccountId || null,
+        stripeConnectStatus: user.stripeConnectStatus || null,
+        stripeOnboarded: user.stripeOnboarded || false,
+        videos: (user.danceVideos || []).map((video: any) => ({
+          id: video.id,
+          url: video.url,
+          title: video.title,
+          description: video.description || '',
+          uploadedAt: video.uploadedAt ? new Date(video.uploadedAt).toISOString() : new Date().toISOString(),
+          status: video.status,
+          rejectionReason: video.rejectionReason || '',
+        })),
       },
-      { status: 200 }
-    );
+    }, { status: 200 });
   } catch (error) {
     console.error('Get choreographer profile error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -89,10 +83,7 @@ export async function PUT(request: NextRequest) {
   try {
     await connectDB();
     const auth = getAuthPayload(request);
-
-    if (!auth) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await request.json();
     const {
@@ -117,17 +108,20 @@ export async function PUT(request: NextRequest) {
           date: String(d.date).trim(),
           timeSlots: Array.isArray(d.timeSlots)
             ? d.timeSlots
-              .filter((s: any) => s && typeof s.time === 'string' && s.time.length > 0)
-              .map((s: any) => ({
-                time: String(s.time).trim(),
-                duration: Number(s.duration) || 60,
-              }))
+                .filter((s: any) => s && typeof s.time === 'string' && s.time.length > 0)
+                .map((s: any) => ({
+                  time: String(s.time).trim(),
+                  duration: Number(s.duration) || 60,
+                }))
             : [],
         }));
     }
 
-    // If this is an availability-only update, we can be more efficient
-    const isOnlyAvailability = availabilityTimes !== undefined && videos === undefined && name === undefined && bio === undefined;
+    const isOnlyAvailability =
+      availabilityTimes !== undefined &&
+      videos === undefined &&
+      name === undefined &&
+      bio === undefined;
 
     if (sanitizedAvailability !== null) {
       await Availability.deleteMany({ choreographerId: auth.userId });
@@ -139,7 +133,9 @@ export async function PUT(request: NextRequest) {
     }
 
     if (isOnlyAvailability) {
-      const updated = await User.findById(auth.userId).select('fullName email phoneNumber bio location pricePerSession danceStyles profileImage role approvalStatus');
+      const updated = await User.findById(auth.userId).select(
+        'fullName email phoneNumber bio location pricePerSession danceStyles profileImage role approvalStatus stripeConnectAccountId stripeConnectStatus stripeOnboarded'
+      );
       if (!updated) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
       return NextResponse.json({
@@ -155,14 +151,15 @@ export async function PUT(request: NextRequest) {
           profileImage: updated.profileImage || '',
           approvalStatus: updated.approvalStatus || undefined,
           availabilityTimes: sanitizedAvailability || [],
+          stripeAccountId: updated.stripeAccountId || null,
+          stripeConnectStatus: updated.stripeConnectStatus || null,
+          stripeOnboarded: updated.stripeOnboarded || false,
         },
       }, { status: 200 });
     }
 
     const user = await User.findById(auth.userId);
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
+    if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
     user.fullName = name ?? user.fullName;
     user.email = email ? String(email).toLowerCase() : user.email;
@@ -173,7 +170,6 @@ export async function PUT(request: NextRequest) {
     user.danceStyles = Array.isArray(danceStyles) ? danceStyles : user.danceStyles;
     user.profileImage = profileImage ?? user.profileImage;
 
-    // Only update videos if they were explicitly provided in the request
     if (Array.isArray(videos)) {
       if (videos.length > MAX_VIDEOS) {
         return NextResponse.json({ error: `Maximum ${MAX_VIDEOS} videos allowed` }, { status: 400 });
@@ -185,12 +181,10 @@ export async function PUT(request: NextRequest) {
         description: String(video.description || '').trim(),
         uploadedAt: video.uploadedAt ? new Date(video.uploadedAt) : new Date(),
       }));
-
       const hasInvalidVideo = normalizedVideos.some((video: any) => !video.url || !video.title);
       if (hasInvalidVideo) {
         return NextResponse.json({ error: 'Each video requires url and title' }, { status: 400 });
       }
-
       const existingVideos = new Map(
         (user.danceVideos || []).map((video: any) => [String(video.id), video])
       );
@@ -206,36 +200,35 @@ export async function PUT(request: NextRequest) {
 
     await user.save();
 
-    // Fetch latest availability for the full response
     const currentAvailability = await Availability.find({ choreographerId: auth.userId }).select('date timeSlots -_id');
 
-    return NextResponse.json(
-      {
-        success: true,
-        profile: {
-          name: user.fullName || '',
-          email: user.email || '',
-          phone: user.phoneNumber || '',
-          bio: user.bio || '',
-          location: user.location || '',
-          pricePerSession: user.pricePerSession || 0,
-          danceStyles: user.danceStyles || [],
-          profileImage: user.profileImage || '',
-          approvalStatus: user.approvalStatus || undefined,
-          availabilityTimes: currentAvailability,
-          videos: (user.danceVideos || []).map((video: any) => ({
-            id: video.id,
-            url: video.url,
-            title: video.title,
-            description: video.description || '',
-            uploadedAt: video.uploadedAt ? new Date(video.uploadedAt).toISOString() : new Date().toISOString(),
-            status: video.status,
-            rejectionReason: video.rejectionReason || '',
-          })),
-        },
+    return NextResponse.json({
+      success: true,
+      profile: {
+        name: user.fullName || '',
+        email: user.email || '',
+        phone: user.phoneNumber || '',
+        bio: user.bio || '',
+        location: user.location || '',
+        pricePerSession: user.pricePerSession || 0,
+        danceStyles: user.danceStyles || [],
+        profileImage: user.profileImage || '',
+        approvalStatus: user.approvalStatus || undefined,
+        availabilityTimes: currentAvailability,
+        stripeAccountId: user.stripeAccountId || null,
+        stripeConnectStatus: user.stripeConnectStatus || null,
+        stripeOnboarded: user.stripeOnboarded || false,
+        videos: (user.danceVideos || []).map((video: any) => ({
+          id: video.id,
+          url: video.url,
+          title: video.title,
+          description: video.description || '',
+          uploadedAt: video.uploadedAt ? new Date(video.uploadedAt).toISOString() : new Date().toISOString(),
+          status: video.status,
+          rejectionReason: video.rejectionReason || '',
+        })),
       },
-      { status: 200 }
-    );
+    }, { status: 200 });
   } catch (error: any) {
     console.error('Update choreographer profile error:', error);
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });

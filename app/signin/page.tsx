@@ -58,7 +58,10 @@ export default function SigninPage() {
         const result = await response.json();
         if (response.ok) {
           if (result.token) {
-            document.cookie = `authToken=${result.token}; path=/; max-age=86400`;
+            // Set cookie with SameSite=Lax to persist through Stripe redirect
+            document.cookie = `authToken=${result.token}; path=/; max-age=86400; SameSite=Lax`;
+            // Also store in localStorage as a backup for redirects
+            localStorage.setItem('authToken', result.token);
           }
           const userRole = result.user?.role || 'client';
           if (userRole === 'super-admin') {
@@ -108,57 +111,54 @@ export default function SigninPage() {
         boxShadow: '0 25px 50px rgba(0, 0, 0, 0.4)',
         overflow: 'hidden',
       }}>
-       {/* LEFT SIDE - BACKGROUND IMAGE */}
-<div style={{
-  flex: 1.5,
-  position: 'relative',
-  background: 'linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%)',
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: '30px',
-  overflow: 'hidden',
-}}>
-  {/* Background Image */}
-  <img 
-    src="/images/signin.png"
-    alt="dancers"
-    style={{
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      width: '110%',
-      height: '100%',
-      objectFit: 'cover',
-      zIndex: 1,
-    }}
-  />
-
-  {/* Logo Badge (On Top!) */}
-  <div style={{
-    position: 'absolute',
-    top: 30,
-    left: 30,
-    width: '70px',
-    height: '70px',
-    borderRadius: '50%',
-    backgroundColor: '#fff',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    border: '2px solid rgba(251, 191, 36, 0.5)',
-    boxShadow: '0 10px 25px rgba(0,0,0,0.25)',
-    overflow: 'hidden',
-    zIndex: 10,  // ← IMPORTANT!
-  }}>
-    <img 
-      src="/images/logo.png"
-      alt="Logo"
-      style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scale(1.2)' }}
-    />
-  </div>
-</div>
+        {/* LEFT SIDE - BACKGROUND IMAGE */}
+        <div style={{
+          flex: 1.5,
+          position: 'relative',
+          background: 'linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '30px',
+          overflow: 'hidden',
+        }}>
+          <img 
+            src="/images/signin.png"
+            alt="dancers"
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '110%',
+              height: '100%',
+              objectFit: 'cover',
+              zIndex: 1,
+            }}
+          />
+          <div style={{
+            position: 'absolute',
+            top: 30,
+            left: 30,
+            width: '70px',
+            height: '70px',
+            borderRadius: '50%',
+            backgroundColor: '#fff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: '2px solid rgba(251, 191, 36, 0.5)',
+            boxShadow: '0 10px 25px rgba(0,0,0,0.25)',
+            overflow: 'hidden',
+            zIndex: 10,
+          }}>
+            <img 
+              src="/images/logo.png"
+              alt="Logo"
+              style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scale(1.2)' }}
+            />
+          </div>
+        </div>
 
         {/* RIGHT SIDE - FORM CARD */}
         <div style={{
@@ -186,7 +186,6 @@ export default function SigninPage() {
             Enter your credentials to continue
           </p>
 
-          {/* Error Message */}
           {errors.submit && (
             <div style={{
               padding: '10px 14px',
@@ -201,13 +200,11 @@ export default function SigninPage() {
             </div>
           )}
 
-          {/* Form */}
           <form onSubmit={handleSignin} style={{
             display: 'flex',
             flexDirection: 'column',
             gap: '16px',
           }}>
-            {/* Email */}
             <div>
               <label style={{
                 display: 'block',
@@ -248,7 +245,6 @@ export default function SigninPage() {
               {errors.email && <p style={{ color: '#ff6b6b', fontSize: '11px', marginTop: '3px' }}>{errors.email}</p>}
             </div>
 
-            {/* Password */}
             <div>
               <label style={{
                 display: 'block',
@@ -289,7 +285,6 @@ export default function SigninPage() {
               {errors.password && <p style={{ color: '#ff6b6b', fontSize: '11px', marginTop: '3px' }}>{errors.password}</p>}
             </div>
 
-            {/* Forgot Password Link */}
             <div style={{ textAlign: 'right' }}>
               <Link href="/forgot-password" style={{
                 fontSize: '12px',
@@ -302,7 +297,6 @@ export default function SigninPage() {
               </Link>
             </div>
 
-            {/* Sign In Button */}
             <button
               type="submit"
               disabled={loading}
@@ -319,24 +313,11 @@ export default function SigninPage() {
                 transition: 'all 0.3s',
                 width: '100%',
               }}
-              onMouseEnter={(e) => {
-                if (!loading) {
-                  e.currentTarget.style.backgroundColor = '#f59e0b';
-                  e.currentTarget.style.transform = 'translateY(-1px)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!loading) {
-                  e.currentTarget.style.backgroundColor = '#fbbf24';
-                  e.currentTarget.style.transform = 'translateY(0)';
-                }
-              }}
             >
               {loading ? 'Signing In...' : 'Sign In'}
             </button>
           </form>
 
-          {/* Sign Up Link */}
           <p style={{
             textAlign: 'center',
             fontSize: '12px',
@@ -357,4 +338,3 @@ export default function SigninPage() {
     </div>
   );
 }
-

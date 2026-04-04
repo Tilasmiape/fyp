@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 import { connectDB } from '@/lib/db';
-import Reservation from '@/models/Reservation';
+import Session from '@/models/Session';
 import Notification from '@/models/Notification';
 import { acquireXLock, releaseXLock } from '@/lib/locks';
 
@@ -51,17 +51,20 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     try {
-      const reservation = await Reservation.findOne({ _id: id, choreographerId: payload.userId });
-      if (!reservation) return NextResponse.json({ error: 'Reservation not found' }, { status: 404 });
-      if (reservation.status !== 'pending') {
-        return NextResponse.json({ error: 'Only pending reservations can be updated' }, { status: 400 });
+      const session = await Session.findOne({ _id: id, choreographerId: payload.userId });
+      if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+      if (session.status !== 'pending' && session.sessionStatus !== 'reserved') {
+        // Allow updating if it's pending or already reserved (maybe to reject later)
       }
 
       const nextStatus = action === 'accept' ? 'accepted' : 'rejected';
-      reservation.status = nextStatus;
-      reservation.decisionReason = reason;
-      reservation.decisionAt = new Date();
-      await reservation.save();
+      const nextSessionStatus = action === 'accept' ? 'reserved' : 'cancelled';
+      
+      session.status = nextStatus;
+      session.sessionStatus = nextSessionStatus;
+      session.decisionReason = reason;
+      session.decisionAt = new Date();
+      await session.save();
 
       const title = action === 'accept' ? 'Session Accepted' : 'Session Rejected';
       const message = action === 'accept'
@@ -69,7 +72,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         : `Your session request was rejected. Reason: ${reason}`;
 
       await Notification.create({
-        userId: reservation.clientId,
+        userId: session.clientId,
+        sessionId: session._id,
         type: action === 'accept' ? 'session-accepted' : 'session-rejected',
         title,
         message,
