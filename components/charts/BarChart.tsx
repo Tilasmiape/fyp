@@ -19,7 +19,7 @@ export default function BarChart({ data, height = 200, title, unit = '', barColo
 
   if (data.length === 0) {
     return (
-      <div style={{ textAlign: 'center', padding: '20px', color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>
+      <div style={{ textAlign: 'center', padding: '20px', color: '#94a3b8', fontSize: '13px' }}>
         No data available
       </div>
     );
@@ -35,7 +35,7 @@ export default function BarChart({ data, height = 200, title, unit = '', barColo
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       {title && (
-        <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase' as const, color: 'rgba(255,255,255,0.45)', textAlign: 'center' }}>
+        <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase' as const, color: '#64748b', textAlign: 'center' }}>
           {title}
         </div>
       )}
@@ -44,10 +44,10 @@ export default function BarChart({ data, height = 200, title, unit = '', barColo
         <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height }}>
           {gridLines.map((g, i) => (
             <div key={i} style={{ position: 'absolute', left: 0, right: 0, top: g.y, display: 'flex', alignItems: 'center' }}>
-              <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.25)', width: '40px', textAlign: 'right', paddingRight: '8px', flexShrink: 0 }}>
+              <span style={{ fontSize: '9px', color: '#94a3b8', width: '40px', textAlign: 'right', paddingRight: '8px', flexShrink: 0 }}>
                 {unit}{g.val.toLocaleString()}
               </span>
-              <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.06)' }} />
+              <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
             </div>
           ))}
         </div>
@@ -63,7 +63,7 @@ export default function BarChart({ data, height = 200, title, unit = '', barColo
             return (
               <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
                 {/* Value label on top */}
-                <div style={{ fontSize: '9px', fontWeight: 700, color: 'rgba(255,255,255,0.5)' }}>
+                <div style={{ fontSize: '9px', fontWeight: 700, color: '#475569' }}>
                   {d.value > 0 ? `${unit}${d.value.toLocaleString()}` : ''}
                 </div>
                 {/* Bar */}
@@ -85,7 +85,7 @@ export default function BarChart({ data, height = 200, title, unit = '', barColo
           {data.map((d, i) => (
             <div key={i} style={{
               flex: 1, textAlign: 'center', fontSize: '9px', fontWeight: 600,
-              color: 'rgba(255,255,255,0.35)', letterSpacing: '0.3px',
+              color: '#64748b', letterSpacing: '0.3px',
             }}>
               {d.label}
             </div>

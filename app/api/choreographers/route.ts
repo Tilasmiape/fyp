@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
 import User from '@/models/User';
 import Availability from '@/models/Availability';
-import { resolveAvailability } from '@/lib/availability';
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,7 +13,7 @@ export async function GET(request: NextRequest) {
 
     const choreographers = await User.find({
       role: 'choreographer',
-      status: 'active',
+      status: { $ne: 'deleted' },
     }).select('fullName email bio location pricePerSession groupSessionPriceMultiplier danceStyles profileImage danceVideos approvalStatus');
 
     // Fetch all availabilities for these choreographers
@@ -73,5 +72,4 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
-
 

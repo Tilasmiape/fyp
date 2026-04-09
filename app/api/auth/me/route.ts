@@ -14,7 +14,7 @@ interface AuthPayload {
 export async function GET(request: NextRequest) {
   try {
     let token = request.cookies.get('authToken')?.value;
-    
+
     // Fallback to Authorization header
     if (!token) {
       const authHeader = request.headers.get('Authorization');
@@ -35,9 +35,31 @@ export async function GET(request: NextRequest) {
     }
 
     await connectDB();
-    const user = await User.findById(payload.userId).select('fullName email role status statusReason');
+    const user = await User.findById(payload.userId).select('fullName email role status statusReason approvalStatus');
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+    if (user.role === 'choreographer') {
+      if (user.approvalStatus === 'pending') {
+        return NextResponse.json(
+          {
+            error: 'Account pending approval',
+            reason: 'Your choreographer signup request is still under review.',
+            status: 'pending',
+          },
+          { status: 403 }
+        );
+      }
+      if (user.approvalStatus === 'rejected') {
+        return NextResponse.json(
+          {
+            error: 'Account rejected',
+            reason: 'Your choreographer signup request was rejected.',
+            status: 'rejected',
+          },
+          { status: 403 }
+        );
+      }
     }
     if (user.status === 'suspended' || user.status === 'deleted') {
       return NextResponse.json(
@@ -67,3 +89,4 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+

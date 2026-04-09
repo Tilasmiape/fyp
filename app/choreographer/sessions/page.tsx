@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import ChoreographerNavbar from '@/components/ChoreographerNavbar';
 
 interface Session {
   id: string;
@@ -22,13 +23,11 @@ interface Session {
 export default function ChoreographerSessionsPage() {
   const router = useRouter();
   const [userName, setUserName] = useState('Choreographer');
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [sessions, setSessions] = useState<Session[]>([]);
   const [stripeConnected, setStripeConnected] = useState(false);
   const [stripeStatus, setStripeStatus] = useState('');
   const [completingId, setComplementingId] = useState<string | null>(null);
-  const [pendingPayouts, setPendingPayouts] = useState(0);
 
   useEffect(() => {
     const loadUser = async () => {
@@ -67,17 +66,12 @@ export default function ChoreographerSessionsPage() {
   useEffect(() => {
     const loadSessions = async () => {
       try {
-        setLoading(true);
         const res = await fetch('/api/choreographer/sessions', {
           credentials: 'include',
         });
         const data = await res.json();
         if (res.ok && data?.sessions) {
           setSessions(data.sessions);
-          const pending = data.sessions.filter(
-            (s: Session) => s.paymentStatus === 'paid' && s.status !== 'completed'
-          ).length;
-          setPendingPayouts(pending);
         }
       } catch {}
     };
@@ -94,7 +88,7 @@ export default function ChoreographerSessionsPage() {
       if (res.ok && data?.onboardingUrl) {
         window.location.href = data.onboardingUrl;
       }
-    } catch (err) {
+    } catch {
       setError('Failed to connect Stripe');
     }
   };
@@ -110,8 +104,8 @@ export default function ChoreographerSessionsPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        setSessions(sessions.map(s => s.id === sessionId ? { ...s, status: 'completed' } : s));
-        alert(`Session completed! Payout scheduled for Friday.\n88% of ${data.payout.choreographerEarnings} NPR`);
+        setSessions(sessions.map((s) => (s.id === sessionId ? { ...s, status: 'completed' } : s)));
+        alert(`Session completed. Payout scheduled for Friday.\n88% of ${data.payout.choreographerEarnings} NPR`);
       } else {
         setError(data?.error || 'Failed to complete session');
       }
@@ -132,24 +126,18 @@ export default function ChoreographerSessionsPage() {
   };
 
   const upcoming = sessions.filter(
-    s =>
+    (s) =>
       (s.status === 'accepted' || s.status === 'confirmed') &&
       s.paymentStatus === 'paid' &&
       !confirmSessionPast(s.date, s.time)
   );
 
-  const completed = sessions.filter(s => s.status === 'completed');
+  const completed = sessions.filter((s) => s.status === 'completed');
 
   return (
     <div style={{ minHeight: '100vh', background: '#f6f7fb', fontFamily: "'Manrope', sans-serif" }}>
       <style>{`
         * { box-sizing: border-box; }
-        .topbar { display: flex; align-items: center; justify-content: space-between; padding: 16px 40px; background: #fff; border-bottom: 1px solid #e7e9f0; }
-        .brand { display: flex; align-items: center; gap: 10px; }
-        .brand-name { font-weight: 700; font-size: 18px; }
-        .nav-links { display: flex; gap: 18px; font-size: 12px; text-transform: uppercase; font-weight: 600; }
-        .nav-links span { cursor: pointer; }
-        .user-pill { display: flex; align-items: center; gap: 10px; padding: 6px 14px; border: 1px solid #e7e9f0; border-radius: 999px; font-size: 12px; font-weight: 600; }
         .page { max-width: 1200px; margin: 0 auto; padding: 32px 36px; }
         .hero h1 { font-size: 32px; margin: 0 0 12px; }
         .hero p { color: #6b7280; font-size: 14px; }
@@ -166,8 +154,6 @@ export default function ChoreographerSessionsPage() {
         .btn-success { background: #047857; color: #fff; }
         .btn-success:hover { background: #065f46; }
         .btn-success[disabled] { opacity: 0.6; cursor: not-allowed; }
-        .btn-warning { background: #b45309; color: #fff; }
-        .btn-warning:hover { background: #92400e; }
         .card { background: #fff; border: 1px solid #e7e9f0; border-radius: 16px; padding: 18px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
         .card-left { display: flex; align-items: center; gap: 14px; flex: 1; }
         .avatar { width: 48px; height: 48px; border-radius: 12px; background: #0f172a; overflow: hidden; }
@@ -179,21 +165,11 @@ export default function ChoreographerSessionsPage() {
         .price { font-weight: 800; font-size: 16px; margin-right: 16px; }
         .status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
         .status-paid { background: #d1fae5; color: #047857; }
-        .status-pending { background: #fef3c7; color: #b45309; }
         .status-completed { background: #d1d5db; color: #374151; }
         .empty { color: #9ca3af; text-align: center; padding: 20px; }
       `}</style>
 
-      <nav className="topbar">
-        <div className="brand">
-          <div className="brand-name">Step Out</div>
-        </div>
-        <div className="nav-links">
-          <span onClick={() => router.push('/choreographer/home')}>Home</span>
-          <span onClick={() => router.push('/choreographer/availability')}>Availability</span>
-        </div>
-        <div className="user-pill">Hi, {userName}</div>
-      </nav>
+      <ChoreographerNavbar subtitle="Choreographer" />
 
       <div className="page">
         <div className="hero">
@@ -203,7 +179,7 @@ export default function ChoreographerSessionsPage() {
 
         {!stripeConnected && (
           <div className="alert warning">
-            💳 Connect your Stripe account to receive payouts every Friday
+            Connect your Stripe account to receive payouts every Friday
             <button className="btn btn-primary" style={{ marginLeft: '12px', padding: '6px 10px' }} onClick={connectStripe}>
               Connect Stripe
             </button>
@@ -211,24 +187,20 @@ export default function ChoreographerSessionsPage() {
         )}
 
         {stripeConnected && stripeStatus !== 'verified' && (
-          <div className="alert warning">
-            ⏳ Your Stripe account is pending verification. Complete bank verification to enable payouts.
-          </div>
+          <div className="alert warning">Your Stripe account is pending verification. Complete bank verification to enable payouts.</div>
         )}
 
         {stripeConnected && stripeStatus === 'verified' && (
-          <div className="alert success">
-            ✅ Your Stripe account is connected and verified. Ready to receive payouts!
-          </div>
+          <div className="alert success">Your Stripe account is connected and verified. Ready to receive payouts.</div>
         )}
 
-        {error && <div className="alert error">✗ {error}</div>}
+        {error && <div className="alert error">{error}</div>}
 
         <div className="section-title">Upcoming Sessions (Ready to Complete)</div>
         {upcoming.length === 0 ? (
           <div className="empty">No upcoming paid sessions</div>
         ) : (
-          upcoming.map(s => (
+          upcoming.map((s) => (
             <div key={s.id} className="card">
               <div className="card-left">
                 <div className="avatar">{s.client.profileImage && <img src={s.client.profileImage} alt={s.client.name} />}</div>
@@ -240,14 +212,22 @@ export default function ChoreographerSessionsPage() {
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div className="price">NPR {s.total.toLocaleString()}</div>
-                <div className="status-badge status-paid" style={{ marginBottom: '8px' }}>✓ Paid</div>
+                <div className="status-badge status-paid" style={{ marginBottom: '8px' }}>Paid</div>
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginBottom: '8px' }}>
+                  <button className="btn btn-secondary" onClick={() => router.push(`/client/${s.client.id}`)}>
+                    View Client
+                  </button>
+                  <button className="btn btn-secondary" onClick={() => router.push(`/choreographer/inbox?userId=${s.client.id}`)}>
+                    Chat
+                  </button>
+                </div>
                 <button
                   className="btn btn-success"
                   onClick={() => completeSession(s.id)}
                   disabled={completingId === s.id || !stripeConnected}
                   title={!stripeConnected ? 'Connect Stripe first' : 'Mark session complete'}
                 >
-                  {completingId === s.id ? '⏳ Completing...' : '✓ Mark Complete'}
+                  {completingId === s.id ? 'Completing...' : 'Mark Complete'}
                 </button>
               </div>
             </div>
@@ -258,7 +238,7 @@ export default function ChoreographerSessionsPage() {
         {completed.length === 0 ? (
           <div className="empty">No completed sessions yet</div>
         ) : (
-          completed.map(s => (
+          completed.map((s) => (
             <div key={s.id} className="card" style={{ opacity: 0.7 }}>
               <div className="card-left">
                 <div className="avatar">{s.client.profileImage && <img src={s.client.profileImage} alt={s.client.name} />}</div>
@@ -271,9 +251,17 @@ export default function ChoreographerSessionsPage() {
               <div style={{ textAlign: 'right' }}>
                 <div className="price">NPR {s.total.toLocaleString()}</div>
                 <div className="status-badge status-completed">Completed</div>
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '8px' }}>
+                  <button className="btn btn-secondary" onClick={() => router.push(`/client/${s.client.id}`)}>
+                    View Client
+                  </button>
+                  <button className="btn btn-secondary" onClick={() => router.push(`/choreographer/inbox?userId=${s.client.id}`)}>
+                    Chat
+                  </button>
+                </div>
                 {s.choreographerEarnings && (
                   <div style={{ fontSize: '11px', color: '#047857', fontWeight: 700, marginTop: '6px' }}>
-                    Earning: {(s.choreographerEarnings).toLocaleString()} NPR
+                    Earning: {s.choreographerEarnings.toLocaleString()} NPR
                   </div>
                 )}
               </div>

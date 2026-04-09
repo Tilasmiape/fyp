@@ -488,9 +488,9 @@ export default function ChoreographerProfilePage() {
           <div className={`stripe-banner ${stripeStatus?.onboarded ? 'ok' : 'warn'}`} style={{ marginTop: 26 }}>
             <div className="stripe-banner-left">
               <div className="stripe-banner-title">
-                {stripeStatus === null && '⏳ Checking payment setup...'}
-                {stripeStatus !== null && stripeStatus.onboarded && '✅ Stripe Payments Active'}
-                {stripeStatus !== null && !stripeStatus.onboarded && '⚠️ Connect Stripe to Receive Payments'}
+                {stripeStatus === null && 'Checking payment setup...'}
+                {stripeStatus !== null && stripeStatus.onboarded && 'Stripe Payments Active'}
+                {stripeStatus !== null && !stripeStatus.onboarded && 'Connect Stripe to Receive Payments'}
               </div>
               <div className="stripe-banner-sub">
                 {stripeStatus?.onboarded
@@ -498,7 +498,7 @@ export default function ChoreographerProfilePage() {
                   : 'Clients cannot pay you until your Stripe account is connected and verified.'}
               </div>
               {stripeError && (
-                <div style={{ fontSize: '11px', color: '#b91c1c', marginTop: 4 }}>✗ {stripeError}</div>
+                <div style={{ fontSize: '11px', color: '#b91c1c', marginTop: 4 }}>{stripeError}</div>
               )}
             </div>
             {stripeStatus !== null && (
@@ -552,7 +552,7 @@ export default function ChoreographerProfilePage() {
               )}
               {isOwner && stripeStatus?.onboarded && (
                 <button className="btn stripe-connected" disabled>
-                  ✓ Stripe Connected
+                  Stripe Connected
                 </button>
               )}
             </div>
@@ -625,7 +625,7 @@ export default function ChoreographerProfilePage() {
             {/* ── Stripe detail card in sidebar ── */}
             {isOwner && stripeStatus !== null && (
               <div className={`stripe-card ${stripeStatus.onboarded ? 'connected' : 'disconnected'}`}>
-                <div className="section-title" style={{ marginBottom: 8 }}>💳 Payment Setup</div>
+                <div className="section-title" style={{ marginBottom: 8 }}>Payment Setup</div>
                 {stripeStatus.onboarded ? (
                   <>
                     <div style={{ display: 'flex', gap: 10 }}>
@@ -663,7 +663,7 @@ export default function ChoreographerProfilePage() {
               </div>
             )}
 
-            <div className="section-title" style={{ marginTop: 18 }}>📅 Available Dates & Times</div>
+            <div className="section-title" style={{ marginTop: 18 }}>Available Dates & Times</div>
             {futureAvailability && futureAvailability.length > 0 ? (
               futureAvailability.map((dateEntry: any) => (
                 <div key={dateEntry.date} style={{ marginBottom: '16px', padding: '12px', backgroundColor: 'rgba(244,182,58,0.05)', borderRadius: '8px', border: '1px solid rgba(244,182,58,0.2)' }}>

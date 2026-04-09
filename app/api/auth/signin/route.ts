@@ -77,6 +77,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (user.role === 'choreographer') {
+      if (user.approvalStatus === 'pending') {
+        return NextResponse.json(
+          {
+            error: 'Account pending approval',
+            reason: 'Your choreographer signup request is still under review. You can sign in after admin approval.',
+            status: 'pending',
+          },
+          { status: 403 }
+        );
+      }
+
+      if (user.approvalStatus === 'rejected') {
+        return NextResponse.json(
+          {
+            error: 'Account rejected',
+            reason: 'Your choreographer signup request was rejected. You cannot sign in with this account.',
+            status: 'rejected',
+          },
+          { status: 403 }
+        );
+      }
+    }
+
     if (user.status === 'suspended' || user.status === 'deleted') {
       const reason = (user as any).statusReason || '';
       const label = user.status === 'deleted' ? 'Account deleted' : 'Account suspended';

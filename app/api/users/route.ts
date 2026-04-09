@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
 import User from '@/models/User';
 import Notification from '@/models/Notification';
+import { sendChoreographerReviewEmail } from '@/lib/email';
 import bcrypt from 'bcryptjs';
 
 export async function GET(request: NextRequest) {
@@ -92,6 +93,14 @@ export async function PUT(request: NextRequest) {
             );
         }
 
+        const previousUser = await User.findById(id).select('role approvalStatus email fullName');
+        if (!previousUser) {
+            return NextResponse.json(
+                { error: 'User not found' },
+                { status: 404 }
+            );
+        }
+
         const updateData: any = {};
         if (fullName) updateData.fullName = fullName;
         if (email) updateData.email = email;
@@ -111,7 +120,7 @@ export async function PUT(request: NextRequest) {
         }
         if (approvalStatus !== undefined) updateData.approvalStatus = approvalStatus;
 
-        const user = await User.findByIdAndUpdate(id, updateData, { new: true }).select('-password');
+        const user = await User.findByIdAndUpdate(id, updateData, { returnDocument: 'after' }).select('-password');
 
         if (!user) {
             return NextResponse.json(
@@ -141,7 +150,50 @@ export async function PUT(request: NextRequest) {
             }
         }
 
-        return NextResponse.json({ success: true, user }, { status: 200 });
+        const approvalStatusChanged =
+            approvalStatus !== undefined &&
+            previousUser.role === 'choreographer' &&
+            previousUser.approvalStatus !== approvalStatus;
+
+        let reviewEmailResult: { sent: boolean; reason?: string } | null = null;
+
+        if (approvalStatusChanged && user) {
+            if (approvalStatus === 'approved') {
+                await Notification.create({
+                    userId: user._id,
+                    type: 'account-approved',
+                    title: 'Account Approved',
+                    message: 'Your choreographer signup request was approved. You can now log in.',
+                    read: false,
+                });
+
+                // Send real email via Resend
+                const emailResult = await sendChoreographerReviewEmail({
+                    to: user.email,
+                    fullName: user.fullName,
+                    decision: 'approved',
+                });
+                console.log('✅ Approval Email sent to', user.email, '| Result:', emailResult);
+            } else if (approvalStatus === 'rejected') {
+                await Notification.create({
+                    userId: user._id,
+                    type: 'account-rejected',
+                    title: 'Account Rejected',
+                    message: 'Your choreographer signup request was rejected. You cannot log in with this account.',
+                    read: false,
+                });
+
+                // Send real email via Resend
+                const emailResult = await sendChoreographerReviewEmail({
+                    to: user.email,
+                    fullName: user.fullName,
+                    decision: 'rejected',
+                });
+                console.log('❌ Rejection Email sent to', user.email, '| Result:', emailResult);
+            }
+        }
+
+        return NextResponse.json({ success: true, user, reviewEmailResult }, { status: 200 });
     } catch (error) {
         console.error('Update user error:', error);
         return NextResponse.json(
@@ -164,26 +216,14 @@ export async function DELETE(request: NextRequest) {
             );
         }
 
-        const user = await User.findByIdAndUpdate(
-            id,
-            { status: 'deleted', statusReason: String(reason || ''), statusUpdatedAt: new Date() },
-            { new: true }
-        );
+        // Permanently delete the user from database
+        const user = await User.findByIdAndDelete(id);
 
         if (!user) {
             return NextResponse.json({ error: 'User not found' }, { status: 404 });
         }
 
-        const reasonText = reason ? ` Reason: ${reason}` : '';
-        await Notification.create({
-            userId: user._id,
-            type: 'account-deleted',
-            title: 'Account Deleted',
-            message: `Your account has been deleted by admin.${reasonText}`,
-            read: false,
-        });
-
-        return NextResponse.json({ success: true, message: 'User deleted successfully' }, { status: 200 });
+        return NextResponse.json({ success: true, message: 'User permanently deleted' }, { status: 200 });
     } catch (error) {
         console.error('Delete user error:', error);
         return NextResponse.json(

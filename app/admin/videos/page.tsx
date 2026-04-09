@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import AdminNavbar from '@/components/AdminNavbar';
 
 interface Video {
   id: string;
@@ -19,7 +19,6 @@ interface Video {
 }
 
 export default function VideosPage() {
-  const router = useRouter();
   const [videos, setVideos] = useState<Video[]>([]);
   const [choreographers, setChoreographers] = useState<string[]>([]);
   const [filteredVideos, setFilteredVideos] = useState<Video[]>([]);
@@ -175,57 +174,23 @@ export default function VideosPage() {
       background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     }}>
-      {/* Nav */}
-      <nav style={{
-        backgroundColor: 'rgba(0,0,0,0.3)',
-        backdropFilter: 'blur(10px)',
-        padding: '16px 40px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        borderBottom: '1px solid rgba(255,255,255,0.1)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{
-            width: '48px', height: '48px', borderRadius: '50%',
-            backgroundColor: '#fff',
-            boxShadow: '0 6px 16px rgba(0,0,0,0.25)',
-            overflow: 'hidden',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <img src="/images/logo.png" alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scale(1.2)' }} />
+      <AdminNavbar
+        subtitle="Video Management"
+        actions={(
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ display: 'flex', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: '10px', padding: '4px' }}>
+              {(['cards', 'table'] as const).map(v => (
+                <button key={v} onClick={() => setView(v)} style={{
+                  background: view === v ? 'rgba(255,255,255,0.2)' : 'none',
+                  border: 'none', color: '#fff', fontSize: '13px', fontWeight: '600',
+                  cursor: 'pointer', padding: '7px 16px', borderRadius: '7px',
+                  transition: 'all 0.2s', textTransform: 'capitalize',
+                }}>{v}</button>
+              ))}
+            </div>
           </div>
-          <div>
-            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#fff' }}>Step Out Studio</h2>
-            <p style={{ margin: 0, fontSize: '12px', color: 'rgba(255,255,255,0.7)' }}>Video Management</p>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          {/* Cards / Table toggle */}
-          <div style={{ display: 'flex', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: '10px', padding: '4px' }}>
-            {(['cards', 'table'] as const).map(v => (
-              <button key={v} onClick={() => setView(v)} style={{
-                background: view === v ? 'rgba(255,255,255,0.2)' : 'none',
-                border: 'none', color: '#fff', fontSize: '13px', fontWeight: '600',
-                cursor: 'pointer', padding: '7px 16px', borderRadius: '7px',
-                transition: 'all 0.2s', textTransform: 'capitalize',
-              }}>{v}</button>
-            ))}
-          </div>
-
-          <button
-            onClick={() => router.back()}
-            style={{
-              background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.3)',
-              color: '#fff', fontSize: '14px', fontWeight: '600', cursor: 'pointer',
-              padding: '8px 20px', borderRadius: '8px', transition: 'all 0.3s',
-            }}
-          >
-            ← Back
-          </button>
-        </div>
-      </nav>
+        )}
+      />
 
       <div style={{ padding: '40px', maxWidth: '1400px', margin: '0 auto' }}>
 
@@ -382,7 +347,7 @@ export default function VideosPage() {
             <p style={{ textAlign: 'center', color: '#9ca3af', padding: '60px 0', fontSize: '15px' }}>Loading videos...</p>
           ) : filteredVideos.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '60px 0', color: '#9ca3af' }}>
-              <div style={{ fontSize: '40px', marginBottom: '12px' }}>🎬</div>
+              <div style={{ fontSize: '40px', marginBottom: '12px' }}></div>
               <p style={{ margin: 0, fontSize: '15px', fontWeight: '600', color: '#6b7280' }}>
                 {searchTerm || choreographerFilter || styleFilter || locationFilter || statusFilter !== 'all' ? 'No videos match your filters.' : 'No videos to review.'}
               </p>
@@ -546,4 +511,5 @@ export default function VideosPage() {
     </div>
   );
 }
+
 

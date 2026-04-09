@@ -1,7 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import AdminNavbar from '@/components/AdminNavbar';
+import BarChart from '@/components/charts/BarChart';
+import PieChart from '@/components/charts/PieChart';
 
 interface User {
   _id: string;
@@ -11,7 +14,7 @@ interface User {
   createdAt: string;
   danceStyles?: string[];
   approvalStatus?: 'pending' | 'approved' | 'rejected';
-  status?: 'active' | 'suspended' | 'deleted';
+  status?: 'active' | 'suspended';
   statusReason?: string;
 }
 
@@ -22,6 +25,16 @@ interface Stats {
   pendingApprovals: number;
   totalBookings: number;
   totalRevenue: number;
+}
+
+interface AdminSession {
+  id: string;
+  createdAt: string;
+  paidAt?: string;
+  paymentStatus: string;
+  total: number;
+  choreographerEarnings: number;
+  platformFee: number;
 }
 
 export default function AdminDashboard() {
@@ -35,7 +48,7 @@ export default function AdminDashboard() {
   // Filter states
   const [searchTerm, setSearchTerm] = useState('');
   const [danceStyleFilter, setDanceStyleFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended' | 'deleted' | 'pending' | 'approved' | 'rejected'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended' | 'pending' | 'approved' | 'rejected'>('all');
   
   const [stats, setStats] = useState<Stats>({
     totalUsers: 0,
@@ -45,6 +58,98 @@ export default function AdminDashboard() {
     totalBookings: 0,
     totalRevenue: 0,
   });
+  const [adminSessions, setAdminSessions] = useState<AdminSession[]>([]);
+  const [profitStats, setProfitStats] = useState({
+    grossRevenue: 0,
+    platformProfit: 0,
+    choreographerPayout: 0,
+    paidSessions: 0,
+    pendingCollection: 0,
+  });
+
+  const monthlySignups = useMemo(() => {
+    const now = new Date();
+    const months = Array.from({ length: 6 }, (_, idx) => {
+      const offset = 5 - idx;
+      const dt = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+      return {
+        key: `${dt.getFullYear()}-${dt.getMonth()}`,
+        label: dt.toLocaleDateString('en-US', { month: 'short' }),
+      };
+    });
+
+    const counts = new Map<string, number>(months.map(m => [m.key, 0]));
+    users.forEach((u) => {
+      const d = new Date(u.createdAt);
+      if (Number.isNaN(d.getTime())) return;
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      if (counts.has(key)) {
+        counts.set(key, (counts.get(key) || 0) + 1);
+      }
+    });
+
+    return months.map((m) => ({
+      label: m.label,
+      value: counts.get(m.key) || 0,
+      color: '#3b82f6',
+    }));
+  }, [users]);
+
+  const approvalDistribution = useMemo(() => {
+    const choreos = users.filter(u => u.role === 'choreographer');
+    const pending = choreos.filter(u => u.approvalStatus === 'pending').length;
+    const approved = choreos.filter(u => u.approvalStatus === 'approved').length;
+    const rejected = choreos.filter(u => u.approvalStatus === 'rejected').length;
+    return [
+      { label: 'Pending', value: pending, color: '#f59e0b' },
+      { label: 'Approved', value: approved, color: '#10b981' },
+      { label: 'Rejected', value: rejected, color: '#ef4444' },
+    ];
+  }, [users]);
+
+  const monthlyPlatformProfit = useMemo(() => {
+    const now = new Date();
+    const months = Array.from({ length: 6 }, (_, idx) => {
+      const offset = 5 - idx;
+      const dt = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+      return {
+        key: `${dt.getFullYear()}-${dt.getMonth()}`,
+        label: dt.toLocaleDateString('en-US', { month: 'short' }),
+      };
+    });
+
+    const totals = new Map<string, number>(months.map(m => [m.key, 0]));
+    adminSessions
+      .filter((s) => s.paymentStatus === 'paid')
+      .forEach((s) => {
+        const d = new Date(s.paidAt || s.createdAt);
+        if (Number.isNaN(d.getTime())) return;
+        const key = `${d.getFullYear()}-${d.getMonth()}`;
+        if (totals.has(key)) {
+          totals.set(key, (totals.get(key) || 0) + Number(s.platformFee || 0));
+        }
+      });
+
+    return months.map((m) => ({
+      label: m.label,
+      value: Math.round((totals.get(m.key) || 0) * 100) / 100,
+      color: '#0ea5e9',
+    }));
+  }, [adminSessions]);
+
+  const profitSplitPie = useMemo(() => {
+    const platform = Number(profitStats.platformProfit || 0);
+    const choreographer = Number(profitStats.choreographerPayout || 0);
+    return [
+      { label: 'Platform (12%)', value: platform, color: '#0284c7' },
+      { label: 'Choreographer (88%)', value: choreographer, color: '#10b981' },
+    ];
+  }, [profitStats.platformProfit, profitStats.choreographerPayout]);
+
+  const profitMargin = useMemo(() => {
+    if (!profitStats.grossRevenue) return 0;
+    return Math.round((profitStats.platformProfit / profitStats.grossRevenue) * 1000) / 10;
+  }, [profitStats.grossRevenue, profitStats.platformProfit]);
 
   const availableDanceStyles = [
     'Bollywood',
@@ -62,6 +167,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     fetchUsers();
+    fetchProfitAnalytics();
   }, []);
 
   useEffect(() => {
@@ -98,6 +204,35 @@ export default function AdminDashboard() {
     }
   };
 
+  const fetchProfitAnalytics = async () => {
+    try {
+      const res = await fetch('/api/admin/sessions', { credentials: 'include' });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data?.success) return;
+
+      const sessions: AdminSession[] = Array.isArray(data.sessions) ? data.sessions : [];
+      setAdminSessions(sessions);
+
+      const paidSessions = sessions.filter((s) => s.paymentStatus === 'paid');
+      const pendingCollection = sessions
+        .filter((s) => s.paymentStatus === 'pending' || s.paymentStatus === 'unpaid')
+        .reduce((sum, s) => sum + Number(s.total || 0), 0);
+
+      const grossRevenue = paidSessions.reduce((sum, s) => sum + Number(s.total || 0), 0);
+      const platformProfit = paidSessions.reduce((sum, s) => sum + Number(s.platformFee || 0), 0);
+      const choreographerPayout = paidSessions.reduce((sum, s) => sum + Number(s.choreographerEarnings || 0), 0);
+
+      setProfitStats({
+        grossRevenue: Math.round(grossRevenue * 100) / 100,
+        platformProfit: Math.round(platformProfit * 100) / 100,
+        choreographerPayout: Math.round(choreographerPayout * 100) / 100,
+        paidSessions: paidSessions.length,
+        pendingCollection: Math.round(pendingCollection * 100) / 100,
+      });
+    } catch {}
+  };
+
   const applyFilters = () => {
     let filtered = users.filter(u => 
       activeTab === 'clients' ? u.role === 'client' : u.role === 'choreographer'
@@ -121,7 +256,7 @@ export default function AdminDashboard() {
     if (statusFilter !== 'all') {
       if (activeTab === 'choreographers' && ['pending', 'approved', 'rejected'].includes(statusFilter)) {
         filtered = filtered.filter(u => u.approvalStatus === statusFilter);
-      } else if (['active', 'suspended', 'deleted'].includes(statusFilter)) {
+      } else if (['active', 'suspended'].includes(statusFilter)) {
         filtered = filtered.filter(u => u.status === statusFilter);
       }
     }
@@ -184,14 +319,7 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleRestoreUser = async (userId: string) => {
-    try {
-      await updateUser(userId, { status: 'active', statusReason: '' });
-      alert('User restored.');
-    } catch (err: any) {
-      alert(err.message || 'Failed to restore user');
-    }
-  };
+
 
   const handleDeleteUser = async (userId: string) => {
     if (!confirm('Are you sure you want to delete this user?')) return;
@@ -223,117 +351,22 @@ export default function AdminDashboard() {
       background: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     }}>
-      {/* Top Navigation Bar */}
-      <nav style={{
-        backgroundColor: 'rgba(0, 0, 0, 0.3)',
-        backdropFilter: 'blur(10px)',
-        padding: '16px 40px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{
-            width: '48px',
-            height: '48px',
-            borderRadius: '50%',
-            backgroundColor: '#fff',
-            boxShadow: '0 6px 16px rgba(0,0,0,0.25)',
-            overflow: 'hidden',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-            <img src="/images/logo.png" alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scale(1.2)' }} />
-          </div>
-          <div>
-            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#fff' }}>
-              Step Out Studio
-            </h2>
-            <p style={{ margin: 0, fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>
-              Admin Dashboard
-            </p>
-          </div>
-        </div>
-        
-        <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-          <button
-            onClick={() => router.push('/admin/requests')}
-            style={{
-              background: 'rgba(255, 255, 255, 0.1)',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
-              color: '#fff',
-              fontSize: '14px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              padding: '8px 16px',
-              borderRadius: '8px',
-            }}>
-            Pending Requests
-          </button>
-          <button
-            onClick={() => router.push('/admin/sessions')}
-            style={{
-              background: 'rgba(255, 255, 255, 0.1)',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
-              color: '#fff',
-              fontSize: '14px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              padding: '8px 16px',
-              borderRadius: '8px',
-            }}>
-            💳 Payment Tracking
-          </button>
-          <button
-            onClick={() => router.push('/admin/payouts')}
-            style={{
-              background: 'rgba(255, 255, 255, 0.1)',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
-              color: '#fff',
-              fontSize: '14px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              padding: '8px 16px',
-              borderRadius: '8px',
-            }}>
-            💰 Payout Management
-          </button>
-          <button 
-            onClick={() => router.push('/admin/videos')}
-            style={{
-              background: 'rgba(255, 255, 255, 0.1)',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
-              color: '#fff',
-              fontSize: '14px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              padding: '8px 16px',
-              borderRadius: '8px',
-            }}>
-            📹 Manage Videos
-          </button>
-          <button 
-            onClick={() => router.push('/signin')}
-            style={{
-              background: 'rgba(255, 255, 255, 0.2)',
-              border: '1px solid rgba(255, 255, 255, 0.3)',
-              color: '#fff',
-              fontSize: '14px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              padding: '8px 20px',
-              borderRadius: '8px',
-            }}
-          >
-            Logout
-          </button>
-        </div>
-      </nav>
+      <AdminNavbar subtitle="Admin Dashboard" />
 
       {/* Main Content */}
       <div style={{ padding: '40px', maxWidth: '1400px', margin: '0 auto' }}>
+        <style>{`
+          @media (max-width: 1200px) {
+            .admin-analytics-grid {
+              grid-template-columns: 1fr 1fr !important;
+            }
+          }
+          @media (max-width: 860px) {
+            .admin-analytics-grid {
+              grid-template-columns: 1fr !important;
+            }
+          }
+        `}</style>
         
         {/* Stats Cards */}
         <div style={{
@@ -388,6 +421,68 @@ export default function AdminDashboard() {
             <h3 style={{ margin: 0, fontSize: '32px', fontWeight: '700', color: '#f59e0b' }}>
               {stats.pendingApprovals}
             </h3>
+          </div>
+        </div>
+
+        {/* Profit Cards */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: '20px',
+          marginBottom: '24px',
+        }}>
+          <div style={{ background: 'rgba(255, 255, 255, 0.95)', borderRadius: '16px', padding: '20px', boxShadow: '0 10px 30px rgba(0, 0, 0, 0.2)' }}>
+            <p style={{ margin: 0, fontSize: '12px', color: '#6b7280', marginBottom: '8px', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700 }}>Gross Revenue</p>
+            <h3 style={{ margin: 0, fontSize: '30px', fontWeight: 800, color: '#0f172a' }}>NPR {profitStats.grossRevenue.toLocaleString()}</h3>
+          </div>
+          <div style={{ background: 'rgba(255, 255, 255, 0.95)', borderRadius: '16px', padding: '20px', boxShadow: '0 10px 30px rgba(0, 0, 0, 0.2)' }}>
+            <p style={{ margin: 0, fontSize: '12px', color: '#6b7280', marginBottom: '8px', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700 }}>Platform Profit (12%)</p>
+            <h3 style={{ margin: 0, fontSize: '30px', fontWeight: 800, color: '#0284c7' }}>NPR {profitStats.platformProfit.toLocaleString()}</h3>
+          </div>
+          <div style={{ background: 'rgba(255, 255, 255, 0.95)', borderRadius: '16px', padding: '20px', boxShadow: '0 10px 30px rgba(0, 0, 0, 0.2)' }}>
+            <p style={{ margin: 0, fontSize: '12px', color: '#6b7280', marginBottom: '8px', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700 }}>Payout to Choreographers (88%)</p>
+            <h3 style={{ margin: 0, fontSize: '30px', fontWeight: 800, color: '#10b981' }}>NPR {profitStats.choreographerPayout.toLocaleString()}</h3>
+          </div>
+          <div style={{ background: 'rgba(255, 255, 255, 0.95)', borderRadius: '16px', padding: '20px', boxShadow: '0 10px 30px rgba(0, 0, 0, 0.2)' }}>
+            <p style={{ margin: 0, fontSize: '12px', color: '#6b7280', marginBottom: '8px', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700 }}>Profit Margin</p>
+            <h3 style={{ margin: 0, fontSize: '30px', fontWeight: 800, color: '#1e3a8a' }}>{profitMargin}%</h3>
+            <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#6b7280' }}>Paid Sessions: {profitStats.paidSessions}</p>
+            <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#6b7280' }}>Pending Collection: NPR {profitStats.pendingCollection.toLocaleString()}</p>
+          </div>
+        </div>
+
+        {/* Analytics */}
+        <div className="admin-analytics-grid" style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr)',
+          gap: '20px',
+          marginBottom: '28px',
+        }}>
+          <div style={{
+            background: 'rgba(255, 255, 255, 0.95)',
+            borderRadius: '16px',
+            padding: '22px',
+            boxShadow: '0 10px 30px rgba(0, 0, 0, 0.2)',
+          }}>
+            <BarChart data={monthlyPlatformProfit} title="Platform Profit (Last 6 Months)" unit="NPR " />
+          </div>
+
+          <div style={{
+            background: 'rgba(255, 255, 255, 0.95)',
+            borderRadius: '16px',
+            padding: '22px',
+            boxShadow: '0 10px 30px rgba(0, 0, 0, 0.2)',
+          }}>
+            <PieChart data={profitSplitPie} title="Revenue Split" size={190} thickness={34} />
+          </div>
+
+          <div style={{
+            background: 'rgba(255, 255, 255, 0.95)',
+            borderRadius: '16px',
+            padding: '22px',
+            boxShadow: '0 10px 30px rgba(0, 0, 0, 0.2)',
+          }}>
+            <PieChart data={approvalDistribution} title="Choreographer Approvals" size={190} thickness={34} />
           </div>
         </div>
 
@@ -544,7 +639,6 @@ export default function AdminDashboard() {
                   <option value="all">All Status</option>
                   <option value="active">Active</option>
                   <option value="suspended">Suspended</option>
-                  <option value="deleted">Deleted</option>
                   {activeTab === 'choreographers' && (
                     <>
                       <option value="pending">Pending Approval</option>
@@ -675,9 +769,9 @@ export default function AdminDashboard() {
                               >
                                 Suspend
                               </button>
-                            ) : (
+                            ) : user.status === 'suspended' ? (
                               <button
-                                onClick={() => handleRestoreUser(user._id)}
+                                onClick={() => updateUser(user._id, { status: 'active', statusReason: '' })}
                                 style={{
                                   padding: '6px 12px',
                                   backgroundColor: '#10b981',
@@ -691,7 +785,7 @@ export default function AdminDashboard() {
                               >
                                 Restore
                               </button>
-                            )}
+                            ) : null}
                             <button
                               onClick={() => handleDeleteUser(user._id)}
                               style={{
@@ -727,3 +821,4 @@ export default function AdminDashboard() {
     </div>
   );
 }
+

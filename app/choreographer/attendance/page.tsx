@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import ChoreographerNavbar from '@/components/ChoreographerNavbar';
 
 interface AttendanceItem {
   id: string;
@@ -203,8 +204,8 @@ export default function ChoreographerAttendancePage() {
         .attendance-root { min-height: 100vh; background: #f7f8fc; font-family: 'Manrope', sans-serif; color: #0f172a; }
         .topbar { display: flex; align-items: center; justify-content: space-between; padding: 18px 40px; background: #fff; border-bottom: 1px solid #e9ecf5; }
         .brand { display: flex; align-items: center; gap: 10px; }
-        .brand-badge { width: 44px; height: 44px; border-radius: 999px; background: #fff; overflow: hidden; box-shadow: 0 10px 20px rgba(0,0,0,0.15); display: grid; place-items: center; }
-        .brand-badge img { width: 100%; height: 100%; object-fit: cover; transform: scale(1.1); }
+        .brand-badge { width: 48px; height: 48px; border-radius: 999px; background: #fff; overflow: hidden; box-shadow: 0 10px 20px rgba(0,0,0,0.15); display: grid; place-items: center; }
+        .brand-badge img { width: 100%; height: 100%; object-fit: cover; transform: scale(1.2); }
         .brand-name { font-weight: 700; letter-spacing: 0.4px; }
         .brand-sub { font-size: 10px; color: #f4b63a; letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; }
         .nav-links { display: flex; gap: 20px; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: #6b7280; font-weight: 700; }
@@ -254,20 +255,7 @@ export default function ChoreographerAttendancePage() {
         }
       `}</style>
 
-      <nav className="topbar">
-        <div className="brand">
-          <div className="brand-badge"><img src="/images/logo.png" alt="Logo" /></div>
-          <div>
-            <div className="brand-name">Step Out</div>
-            <div className="brand-sub">Studio Hub</div>
-          </div>
-        </div>
-        <div className="nav-links">
-          <span onClick={() => router.push('/choreographer/home')}>Home</span>
-          <span onClick={() => router.push('/choreographer/attendance')}>Dashboard</span>
-        </div>
-       
-      </nav>
+      <ChoreographerNavbar subtitle="Choreographer" />
 
       <div className="page">
         <div className="intro">
@@ -440,3 +428,4 @@ export default function ChoreographerAttendancePage() {
     </div>
   );
 }
+

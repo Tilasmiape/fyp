@@ -312,6 +312,20 @@ export default function ClientSessionsPage() {
           background: rgba(15,23,42,0.08); color: #0f172a; font-weight: 700; font-size: 11px;
           letter-spacing: 0.8px; text-transform: uppercase; padding: 8px 12px; border-radius: 999px; cursor: pointer; margin-top: 8px;
         }
+        .btn-chat {
+          border: 1px solid #dbe3f3;
+          background: #fff;
+          color: #1f2937;
+          font-weight: 700;
+          font-size: 11px;
+          letter-spacing: 0.8px;
+          text-transform: uppercase;
+          padding: 8px 12px;
+          border-radius: 999px;
+          cursor: pointer;
+          margin-top: 8px;
+          margin-left: 8px;
+        }
         .btn-pay {
           border: none; background: #111827; color: #fff; font-weight: 800; font-size: 11px;
           letter-spacing: 0.8px; text-transform: uppercase; padding: 8px 14px; border-radius: 999px; cursor: pointer; margin-top: 10px; transition: all 0.3s ease;
@@ -355,6 +369,7 @@ export default function ClientSessionsPage() {
         <div className="nav-links">
           <span onClick={() => router.push('/client/home')} style={{ cursor: 'pointer' }}>Home</span>
           <span onClick={() => router.push('/client/sessions')} style={{ cursor: 'pointer' }}>Dashboard</span>
+          <span onClick={() => router.push('/client/inbox')} style={{ cursor: 'pointer' }}>Inbox</span>
         </div>
         <div className="user-pill">
           <span>Hi, {userName}</span>
@@ -364,7 +379,7 @@ export default function ClientSessionsPage() {
 
       {paymentSuccess && (
         <div className="success-toast">
-          ✓ Payment successful! Your session is now confirmed.
+          Payment successful! Your session is now confirmed.
         </div>
       )}
 
@@ -398,6 +413,7 @@ export default function ClientSessionsPage() {
               <div style={{ textAlign: 'right' }}>
                 <div className="status" style={{ background: '#fff7ed', color: '#c2410c' }}>Requested</div>
                 <div className="price" style={{ marginTop: '6px' }}>NPR {r.total.toLocaleString()}</div>
+                <button className="btn-chat" onClick={() => router.push(`/client/inbox?userId=${r.choreographer.id}`)}>Chat</button>
               </div>
             </div>
           ))
@@ -420,23 +436,24 @@ export default function ClientSessionsPage() {
               <div style={{ textAlign: 'right' }}>
                 <div className="status" style={{ background: '#ecfdf5', color: '#047857' }}>Confirmed</div>
                 <div className="price" style={{ marginTop: '6px' }}>NPR {r.total.toLocaleString()}</div>
+                <button className="btn-chat" onClick={() => router.push(`/client/inbox?userId=${r.choreographer.id}`)}>Chat</button>
                 {r.paymentStatus === 'paid' && (
-                  <div className="payment-pill paid" style={{ marginTop: '8px' }}>✓ Paid</div>
+                  <div className="payment-pill paid" style={{ marginTop: '8px' }}>Paid</div>
                 )}
                 {r.paymentStatus === 'pending' && (
-                  <div className="payment-pill pending" style={{ marginTop: '8px' }}>⏳ Payment Processing...</div>
+                  <div className="payment-pill pending" style={{ marginTop: '8px' }}>Payment Processing...</div>
                 )}
                 {r.paymentStatus === 'failed' && (
-                  <div className="payment-pill failed" style={{ marginTop: '8px' }}>✗ Payment Failed</div>
+                  <div className="payment-pill failed" style={{ marginTop: '8px' }}>Payment Failed</div>
                 )}
                 {(r.paymentStatus === 'unpaid' || !r.paymentStatus) && (
                   <div style={{ marginTop: '10px' }}>
                     <button className="btn-pay" onClick={() => startPayment(r.id)} disabled={paymentLoadingId === r.id}>
-                      {paymentLoadingId === r.id ? '⏳ Initializing...' : '💳 Pay Now'}
+                      {paymentLoadingId === r.id ? 'Initializing...' : 'Pay Now'}
                     </button>
                     {paymentError && paymentErrorId === r.id && (
                       <div className="meta" style={{ color: '#ef4444', marginTop: '6px', fontSize: '11px' }}>
-                        ✗ {paymentError}
+                        {paymentError}
                       </div>
                     )}
                   </div>
@@ -464,6 +481,7 @@ export default function ClientSessionsPage() {
                 <div className="status" style={{ background: '#f1f2f7', color: '#6b7280' }}>Completed</div>
                 <div className="price" style={{ marginTop: '6px' }}>NPR {r.total.toLocaleString()}</div>
                 <button className="btn-feedback" onClick={() => openFeedback(r)}>Send Review</button>
+                <button className="btn-chat" onClick={() => router.push(`/client/inbox?userId=${r.choreographer.id}`)}>Chat</button>
               </div>
             </div>
           ))

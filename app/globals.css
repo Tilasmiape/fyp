@@ -10,6 +10,351 @@ html {
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+body[data-user-panel='true'][data-theme='dark'] {
+  background: #0b1220 !important;
+  color: #e2e8f0 !important;
+  color-scheme: dark;
+}
+
+body[data-user-panel='true'][data-theme='dark'] .topbar,
+body[data-user-panel='true'][data-theme='dark'] nav,
+body[data-user-panel='true'][data-theme='dark'] .card,
+body[data-user-panel='true'][data-theme='dark'] .section,
+body[data-user-panel='true'][data-theme='dark'] .modal,
+body[data-user-panel='true'][data-theme='dark'] .modal-box,
+body[data-user-panel='true'][data-theme='dark'] .user-pill {
+  background: #111827 !important;
+  color: #e2e8f0 !important;
+  border-color: #334155 !important;
+}
+
+body[data-user-panel='true'][data-theme='dark'] .brand-name,
+body[data-user-panel='true'][data-theme='dark'] .name,
+body[data-user-panel='true'][data-theme='dark'] .chat-name,
+body[data-user-panel='true'][data-theme='dark'] .section-title,
+body[data-user-panel='true'][data-theme='dark'] h1,
+body[data-user-panel='true'][data-theme='dark'] h2,
+body[data-user-panel='true'][data-theme='dark'] h3,
+body[data-user-panel='true'][data-theme='dark'] .value {
+  color: #f8fafc !important;
+}
+
+body[data-user-panel='true'][data-theme='dark'] .meta,
+body[data-user-panel='true'][data-theme='dark'] .chat-sub,
+body[data-user-panel='true'][data-theme='dark'] .empty,
+body[data-user-panel='true'][data-theme='dark'] .label,
+body[data-user-panel='true'][data-theme='dark'] p {
+  color: #cbd5e1;
+}
+
+body[data-user-panel='true'][data-theme='dark'] .thread.active,
+body[data-user-panel='true'][data-theme='dark'] .thread:hover,
+body[data-user-panel='true'][data-theme='dark'] .payment-pill.pending {
+  background: #1e293b !important;
+}
+
+body[data-user-panel='true'][data-theme='dark'] .input,
+body[data-user-panel='true'][data-theme='dark'] input,
+body[data-user-panel='true'][data-theme='dark'] textarea,
+body[data-user-panel='true'][data-theme='dark'] select {
+  background: #0f172a !important;
+  color: #e2e8f0 !important;
+  border-color: #334155 !important;
+}
+
+body[data-user-panel='true'][data-theme='dark'] .btn-secondary,
+body[data-user-panel='true'][data-theme='dark'] .btn-chat,
+body[data-user-panel='true'][data-theme='dark'] .upload-btn,
+body[data-user-panel='true'][data-theme='dark'] .logout-btn {
+  background: #1f2937 !important;
+  color: #f8fafc !important;
+  border-color: #334155 !important;
+}
+
+body[data-user-panel='true'][data-theme='dark'] .client-root,
+body[data-user-panel='true'][data-theme='dark'] .client-view-root,
+body[data-user-panel='true'][data-theme='dark'] .client-profile-root,
+body[data-user-panel='true'][data-theme='dark'] .notifications-root,
+body[data-user-panel='true'][data-theme='dark'] .sessions-root,
+body[data-user-panel='true'][data-theme='dark'] .inbox-root,
+body[data-user-panel='true'][data-theme='dark'] .profile-root,
+body[data-user-panel='true'][data-theme='dark'] .dash-root,
+body[data-user-panel='true'][data-theme='dark'] .reviews-root,
+body[data-user-panel='true'][data-theme='dark'] .scores-root,
+body[data-user-panel='true'][data-theme='dark'] .attendance-root {
+  background: #0b1220 !important;
+  color: #e2e8f0 !important;
+}
+
+body[data-user-panel='true'][data-theme='dark'] .page,
+body[data-user-panel='true'][data-theme='dark'] .layout,
+body[data-user-panel='true'][data-theme='dark'] .main,
+body[data-user-panel='true'][data-theme='dark'] .content,
+body[data-user-panel='true'][data-theme='dark'] .section,
+body[data-user-panel='true'][data-theme='dark'] .panel,
+body[data-user-panel='true'][data-theme='dark'] .sidebar,
+body[data-user-panel='true'][data-theme='dark'] .hero,
+body[data-user-panel='true'][data-theme='dark'] .filters {
+  background-color: #0f172a !important;
+  color: #e2e8f0 !important;
+}
+
+body[data-user-panel='true'][data-theme='dark'] .card,
+body[data-user-panel='true'][data-theme='dark'] .booking-card,
+body[data-user-panel='true'][data-theme='dark'] .profile-card,
+body[data-user-panel='true'][data-theme='dark'] .profile-section,
+body[data-user-panel='true'][data-theme='dark'] .analytics-card,
+body[data-user-panel='true'][data-theme='dark'] .post-card,
+body[data-user-panel='true'][data-theme='dark'] .video-card,
+body[data-user-panel='true'][data-theme='dark'] .modal-box,
+body[data-user-panel='true'][data-theme='dark'] .modal-inner,
+body[data-user-panel='true'][data-theme='dark'] .reservation-modal-card,
+body[data-user-panel='true'][data-theme='dark'] .thread,
+body[data-user-panel='true'][data-theme='dark'] .table-wrap,
+body[data-user-panel='true'][data-theme='dark'] .stat-card,
+body[data-user-panel='true'][data-theme='dark'] .action-card {
+  background: #111827 !important;
+  color: #e2e8f0 !important;
+  border-color: #334155 !important;
+  box-shadow: none !important;
+}
+
+body[data-user-panel='true'][data-theme='dark'] .tab,
+body[data-user-panel='true'][data-theme='dark'] .segmented button,
+body[data-user-panel='true'][data-theme='dark'] .toggle-btn,
+body[data-user-panel='true'][data-theme='dark'] .role-chip,
+body[data-user-panel='true'][data-theme='dark'] .role-btn {
+  background: #1f2937 !important;
+  color: #e2e8f0 !important;
+  border-color: #334155 !important;
+}
+
+body[data-user-panel='true'][data-theme='dark'] .tab.active,
+body[data-user-panel='true'][data-theme='dark'] .segmented button.active,
+body[data-user-panel='true'][data-theme='dark'] .toggle-btn.active,
+body[data-user-panel='true'][data-theme='dark'] .role-chip.active,
+body[data-user-panel='true'][data-theme='dark'] .role-btn.active {
+  background: #334155 !important;
+  color: #f8fafc !important;
+  border-color: #475569 !important;
+}
+
+/* Strong readability pass for dark mode across whole user panels */
+body[data-user-panel='true'][data-theme='dark'] .client-root,
+body[data-user-panel='true'][data-theme='dark'] .client-view-root,
+body[data-user-panel='true'][data-theme='dark'] .client-profile-root,
+body[data-user-panel='true'][data-theme='dark'] .notifications-root,
+body[data-user-panel='true'][data-theme='dark'] .sessions-root,
+body[data-user-panel='true'][data-theme='dark'] .inbox-root,
+body[data-user-panel='true'][data-theme='dark'] .profile-root,
+body[data-user-panel='true'][data-theme='dark'] .dash-root,
+body[data-user-panel='true'][data-theme='dark'] .reviews-root,
+body[data-user-panel='true'][data-theme='dark'] .scores-root,
+body[data-user-panel='true'][data-theme='dark'] .attendance-root {
+  color: #e5edf9 !important;
+}
+
+body[data-user-panel='true'][data-theme='dark'] ::placeholder {
+  color: #9fb1ca !important;
+  opacity: 1;
+}
+
+body[data-user-panel='true'][data-theme='dark'] svg text,
+body[data-user-panel='true'][data-theme='dark'] .recharts-text,
+body[data-user-panel='true'][data-theme='dark'] .recharts-legend-item-text {
+  fill: #e5edf9 !important;
+}
+
+/* If any surface stays white in dark mode, force dark text on it */
+body[data-user-panel='true'][data-theme='dark'] [style*='background: #fff'],
+body[data-user-panel='true'][data-theme='dark'] [style*='background:#fff'],
+body[data-user-panel='true'][data-theme='dark'] [style*='background: #ffffff'],
+body[data-user-panel='true'][data-theme='dark'] [style*='background:#ffffff'],
+body[data-user-panel='true'][data-theme='dark'] [style*='background-color: #fff'],
+body[data-user-panel='true'][data-theme='dark'] [style*='background-color:#fff'],
+body[data-user-panel='true'][data-theme='dark'] [style*='background-color: #ffffff'],
+body[data-user-panel='true'][data-theme='dark'] [style*='background-color:#ffffff'],
+body[data-user-panel='true'][data-theme='dark'] [style*='background: rgb(255, 255, 255)'],
+body[data-user-panel='true'][data-theme='dark'] [style*='background-color: rgb(255, 255, 255)'] {
+  color: #0f172a !important;
+}
+
+body[data-user-panel='true'][data-theme='dark'] [style*='background: #fff'] .muted,
+body[data-user-panel='true'][data-theme='dark'] [style*='background:#fff'] .muted,
+body[data-user-panel='true'][data-theme='dark'] [style*='background: #ffffff'] .muted,
+body[data-user-panel='true'][data-theme='dark'] [style*='background:#ffffff'] .muted,
+body[data-user-panel='true'][data-theme='dark'] [style*='background-color: #fff'] .muted,
+body[data-user-panel='true'][data-theme='dark'] [style*='background-color:#fff'] .muted,
+body[data-user-panel='true'][data-theme='dark'] [style*='background-color: #ffffff'] .muted,
+body[data-user-panel='true'][data-theme='dark'] [style*='background-color:#ffffff'] .muted,
+body[data-user-panel='true'][data-theme='dark'] [style*='background: rgb(255, 255, 255)'] .muted,
+body[data-user-panel='true'][data-theme='dark'] [style*='background-color: rgb(255, 255, 255)'] .muted {
+  color: #334155 !important;
+}
+
+/* Client home card readability fixes */
+body[data-user-panel='true'][data-theme='dark'] .client-root .tag {
+  background: #253041 !important;
+  color: #e5edf9 !important;
+  border: 1px solid #3b4a60 !important;
+}
+
+body[data-user-panel='true'][data-theme='dark'] .client-root .btn {
+  background: #1f2937 !important;
+  color: #f8fafc !important;
+  border-color: #334155 !important;
+}
+
+body[data-user-panel='true'][data-theme='dark'] .client-root .btn:hover {
+  background: #334155 !important;
+}
+
+body[data-user-panel='true'][data-theme='dark'] .client-root .btn.primary {
+  background: #0ea5e9 !important;
+  border-color: #0ea5e9 !important;
+  color: #ffffff !important;
+}
+
+/* Client sessions visibility */
+body[data-user-panel='true'][data-theme='dark'] .sessions-root .status {
+  color: #0f172a !important;
+}
+body[data-user-panel='true'][data-theme='dark'] .sessions-root .payment-pill.paid {
+  color: #065f46 !important;
+}
+body[data-user-panel='true'][data-theme='dark'] .sessions-root .payment-pill.pending {
+  color: #92400e !important;
+}
+body[data-user-panel='true'][data-theme='dark'] .sessions-root .payment-pill.failed {
+  color: #991b1b !important;
+}
+
+/* Inbox readability */
+body[data-user-panel='true'][data-theme='dark'] .inbox-root .bubble.other {
+  background: #1e293b !important;
+  color: #f8fafc !important;
+}
+body[data-user-panel='true'][data-theme='dark'] .inbox-root .bubble.own {
+  background: #0ea5e9 !important;
+  color: #ffffff !important;
+}
+body[data-user-panel='true'][data-theme='dark'] .inbox-root .thread-name,
+body[data-user-panel='true'][data-theme='dark'] .inbox-root .thread-meta,
+body[data-user-panel='true'][data-theme='dark'] .inbox-root .bubble-time {
+  color: #dbeafe !important;
+}
+
+/* Favorites heart */
+body[data-user-panel='true'][data-theme='dark'] .client-root .card-fav {
+  color: #f8fafc !important;
+  border-color: rgba(255, 255, 255, 0.65) !important;
+}
+body[data-user-panel='true'][data-theme='dark'] .client-root .card-fav.active {
+  color: #e11d48 !important;
+  background: #ffffff !important;
+}
+
+/* Notifications page */
+body[data-user-panel='true'][data-theme='dark'] .notifications-root .notice-card {
+  background: #111827 !important;
+  border-color: #334155 !important;
+}
+body[data-user-panel='true'][data-theme='dark'] .notifications-root .notice-title,
+body[data-user-panel='true'][data-theme='dark'] .notifications-root .notice-meta,
+body[data-user-panel='true'][data-theme='dark'] .notifications-root .notice-message {
+  color: #e5edf9 !important;
+}
+
+/* Scores page average card */
+body[data-user-panel='true'][data-theme='dark'] .scores-root .avg-card {
+  background: #111827 !important;
+  border-color: #334155 !important;
+}
+body[data-user-panel='true'][data-theme='dark'] .scores-root .avg-label,
+body[data-user-panel='true'][data-theme='dark'] .scores-root .avg-value {
+  color: #f8fafc !important;
+}
+
+/* Profile page buttons (View Sessions, Back) */
+body[data-user-panel='true'][data-theme='dark'] .client-profile-root .btn.secondary,
+body[data-user-panel='true'][data-theme='dark'] .client-view-root .btn {
+  background: #1f2937 !important;
+  color: #f8fafc !important;
+  border-color: #334155 !important;
+}
+
+/* Choreographer home text */
+body[data-user-panel='true'][data-theme='dark'] .dash-root .sidebar-item,
+body[data-user-panel='true'][data-theme='dark'] .dash-root .booking-meta,
+body[data-user-panel='true'][data-theme='dark'] .dash-root .profile-mini-label,
+body[data-user-panel='true'][data-theme='dark'] .dash-root .contact-item,
+body[data-user-panel='true'][data-theme='dark'] .dash-root .stat-label,
+body[data-user-panel='true'][data-theme='dark'] .dash-root .post-caption {
+  color: #dbeafe !important;
+}
+
+body[data-user-panel='true'][data-theme='dark'] .dash-root .tabs {
+  background: #1f2937 !important;
+  border: 1px solid #334155 !important;
+}
+
+body[data-user-panel='true'][data-theme='dark'] .dash-root .tab {
+  color: #cbd5e1 !important;
+}
+
+body[data-user-panel='true'][data-theme='dark'] .dash-root .tab.active {
+  background: #0ea5e9 !important;
+  color: #ffffff !important;
+}
+
+body[data-user-panel='true'][data-theme='dark'] .dash-root .booking-card {
+  background: #111827 !important;
+  border: 1px solid #334155 !important;
+}
+
+body[data-user-panel='true'][data-theme='dark'] .dash-root .booking-card:hover {
+  background: #1f2937 !important;
+  border-color: #475569 !important;
+}
+
+body[data-user-panel='true'][data-theme='dark'] .dash-root .booking-name {
+  color: #f8fafc !important;
+}
+
+body[data-user-panel='true'][data-theme='dark'] .dash-root .booking-meta {
+  color: #cbd5e1 !important;
+}
+
+/* Attendance page buttons/status */
+body[data-user-panel='true'][data-theme='dark'] .attendance-root .btn.secondary {
+  background: #1f2937 !important;
+  color: #f8fafc !important;
+  border-color: #334155 !important;
+}
+body[data-user-panel='true'][data-theme='dark'] .attendance-root .btn.present {
+  background: #16a34a !important;
+  color: #ffffff !important;
+}
+body[data-user-panel='true'][data-theme='dark'] .attendance-root .btn.absent {
+  background: #7f1d1d !important;
+  color: #fecaca !important;
+  border-color: #b91c1c !important;
+}
+body[data-user-panel='true'][data-theme='dark'] .attendance-root .status-present {
+  background: #14532d !important;
+  color: #86efac !important;
+}
+body[data-user-panel='true'][data-theme='dark'] .attendance-root .status-absent {
+  background: #7f1d1d !important;
+  color: #fecaca !important;
+}
+body[data-user-panel='true'][data-theme='dark'] .attendance-root .status-unmarked {
+  background: #334155 !important;
+  color: #e2e8f0 !important;
 }
 
 @keyframes fadeInUp {

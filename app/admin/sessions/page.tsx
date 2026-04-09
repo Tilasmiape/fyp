@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import AdminNavbar from '@/components/AdminNavbar';
 
 interface SessionStats {
   total: number;
@@ -159,9 +160,7 @@ export default function AdminSessionsPage() {
         .loading { text-align: center; padding: 40px 20px; color: #6b7280; }
       `}</style>
 
-      <nav className="topbar">
-        <div className="brand-name">Step Out - Admin Sessions</div>
-      </nav>
+      <AdminNavbar subtitle="Session Payment Tracking" />
 
       <div className="page">
         <div className="hero">
@@ -169,7 +168,7 @@ export default function AdminSessionsPage() {
           <p>Monitor payment status and choreographer earnings</p>
         </div>
 
-        {error && <div className="alert error">✗ {error}</div>}
+        {error && <div className="alert error">{error}</div>}
 
         {stats && (
           <div className="stats-grid">
@@ -329,3 +328,4 @@ export default function AdminSessionsPage() {
     </div>
   );
 }
+

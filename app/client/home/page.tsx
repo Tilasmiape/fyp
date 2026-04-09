@@ -379,6 +379,14 @@ export default function ClientDashboard() {
   useEffect(() => {
     const key = `favorites:${userId || 'guest'}`;
     try {
+      // Migrate any pre-login guest favorites into the logged-in user's bucket once.
+      if (userId) {
+        const guestRaw = localStorage.getItem('favorites:guest');
+        const userRaw = localStorage.getItem(key);
+        if (guestRaw && !userRaw) {
+          localStorage.setItem(key, guestRaw);
+        }
+      }
       const raw = localStorage.getItem(key);
       if (!raw) return;
       const ids = JSON.parse(raw);
@@ -517,7 +525,7 @@ export default function ClientDashboard() {
           display: grid;
           place-items: center;
         }
-        .brand-badge img { width: 100%; height: 100%; object-fit: cover; transform: scale(1.6); }
+        .brand-badge img { width: 100%; height: 100%; object-fit: cover; transform: scale(1.2); }
         .brand-name {
           font-weight: 700;
           letter-spacing: 0.4px;
@@ -1077,6 +1085,7 @@ export default function ClientDashboard() {
           <div className="nav-links">
             <span onClick={() => router.push('/client/home')} style={{ cursor: 'pointer' }}>Home</span>
             <span onClick={() => router.push('/client/sessions')} style={{ cursor: 'pointer' }}>Sessions</span>
+            <span onClick={() => router.push('/client/inbox')} style={{ cursor: 'pointer' }}>Inbox</span>
             <span onClick={() => router.push('/client/notifications')} style={{ cursor: 'pointer' }}>Notifications</span>
             <span onClick={() => router.push('/client/reviews')} style={{ cursor: 'pointer' }}>Reviews</span>
             <span onClick={() => router.push('/client/scores')} style={{ cursor: 'pointer' }}>Scores</span>
@@ -1095,9 +1104,20 @@ export default function ClientDashboard() {
         <div className="hero">
           <h1>Namaste, {userName}</h1>
           <div className="segmented">
-            <button className="active" onClick={() => router.push('/client/home')}>Collective</button>
+            <button
+              className={viewMode === 'collective' ? 'active' : ''}
+              onClick={() => setViewMode('collective')}
+            >
+              Collective
+            </button>
             <button onClick={() => router.push('/client/sessions')}>Sessions</button>
-            <button>Favorites</button>
+            <button onClick={() => router.push('/client/inbox')}>Inbox</button>
+            <button
+              className={viewMode === 'favorites' ? 'active' : ''}
+              onClick={() => setViewMode('favorites')}
+            >
+              Favorites
+            </button>
             <button onClick={() => router.push('/client/notifications')}>
               Notifications
               {unreadCount > 0 && <span className="notif-badge">{unreadCount}</span>}
@@ -1154,7 +1174,11 @@ export default function ClientDashboard() {
         {loading ? (
           <div className="state">Loading choreographers...</div>
         ) : filtered.length === 0 ? (
-          <div className="state">No choreographers match your filters.</div>
+          <div className="state">
+            {viewMode === 'favorites'
+              ? 'No favorite choreographers yet. Tap the heart icon on any card to add favorites.'
+              : 'No choreographers match your filters.'}
+          </div>
         ) : (
           <div className="cards">
             {filtered.map(c => {
@@ -1163,8 +1187,8 @@ export default function ClientDashboard() {
                 <div key={c.id} className="card">
                   <div className="card-media">
                     {c.profileImage && <img src={c.profileImage} alt={c.name} />}
-                    <div className="card-badge">Top</div>
-                    <div className="card-rating">4.8 Elite</div>
+                
+                    
                     <div
                       className={`card-fav ${favorites.has(c.id) ? 'active' : ''}`}
                       onClick={() => toggleFavorite(c.id)}

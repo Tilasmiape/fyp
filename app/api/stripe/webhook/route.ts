@@ -46,9 +46,11 @@ export async function POST(request: NextRequest) {
         const paymentIntent = await stripeClient.paymentIntents.retrieve(
           session.payment_intent as string
         );
-        const totalPaid = paymentIntent.amount;
-        const platformFee = paymentIntent.application_fee_amount ?? Math.round(totalPaid * 0.12);
-        const choreographerEarnings = totalPaid - platformFee;
+        const totalPaidInCents = paymentIntent.amount;
+        const platformFeeInCents = paymentIntent.application_fee_amount ?? Math.round(totalPaidInCents * 0.12);
+        const choreographerEarningsInCents = totalPaidInCents - platformFeeInCents;
+        const platformFee = Math.round((platformFeeInCents / 100) * 100) / 100;
+        const choreographerEarnings = Math.round((choreographerEarningsInCents / 100) * 100) / 100;
 
         const result = await Reservation.findOneAndUpdate(
           { _id: reservationId },
@@ -58,12 +60,13 @@ export async function POST(request: NextRequest) {
               status: 'confirmed',
               stripePaymentIntentId: String(session.payment_intent || ''),
               paidAt: new Date(),
-              // Record the actual split for reporting
-              platformFeeCollected: platformFee,
-              choreographerEarningsTransferred: choreographerEarnings,
+              // Record the split used by admin/choreographer analytics
+              platformFee,
+              choreographerEarnings,
+              payoutStatus: 'scheduled',
             },
           },
-          { new: true }
+          { returnDocument: 'after' }
         )
           .populate('choreographerId', 'fullName')
           .populate('clientId', 'fullName');
@@ -75,15 +78,15 @@ export async function POST(request: NextRequest) {
         // automatically by Stripe Connect via transfer_data.destination set at checkout.
         if (result && result.paymentStatus === 'paid') {
           try {
-            const existing = await Payout.findOne({ reservationId: result._id });
+            const existing = await Payout.findOne({ sessionId: result._id });
             if (!existing) {
               const nextFriday = getNextFriday();
               const payout = new Payout({
                 choreographerId: result.choreographerId._id,
-                reservationId: result._id,
+                sessionId: result._id,
                 amount: choreographerEarnings,
                 currency: result.paymentCurrency || 'usd',
-                status: 'transferred', // Stripe Connect handles this automatically
+                status: 'pending',
                 payoutDate: nextFriday,
                 metadata: {
                   choreographerName: (result.choreographerId as any).fullName,
@@ -99,7 +102,7 @@ export async function POST(request: NextRequest) {
                 $set: { payoutId: payout._id },
               });
               console.log(
-                `[WEBHOOK] ✅ Split recorded — Platform: ${platformFee / 100} | Choreographer: ${choreographerEarnings / 100}`
+                `[WEBHOOK] Split recorded - Platform: ${platformFee} | Choreographer: ${choreographerEarnings}`
               );
             }
           } catch (payoutErr) {

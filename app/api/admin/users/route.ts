@@ -9,7 +9,7 @@ export async function PUT(request: NextRequest) {
 
         const { userId, action, reason } = await request.json();
 
-        if (!userId || !['suspend', 'restore', 'delete'].includes(action)) {
+        if (userId || !['suspend', 'delete'].includes(action)) {
             return NextResponse.json(
                 { error: 'Invalid request data' },
                 { status: 400 }
@@ -17,27 +17,15 @@ export async function PUT(request: NextRequest) {
         }
 
         if (action === 'delete') {
-            const deletedUser = await User.findByIdAndUpdate(
-                userId,
-                { status: 'deleted', statusReason: String(reason || ''), statusUpdatedAt: new Date() },
-                { new: true }
-            );
+            const deletedUser = await User.findByIdAndDelete(userId);
             if (!deletedUser) {
                 return NextResponse.json(
                     { error: 'User not found' },
                     { status: 404 }
                 );
             }
-            const reasonText = reason ? ` Reason: ${reason}` : '';
-            await Notification.create({
-                userId: deletedUser._id,
-                type: 'account-deleted',
-                title: 'Account Deleted',
-                message: `Your account has been deleted by admin.${reasonText}`,
-                read: false,
-            });
             return NextResponse.json(
-                { success: true, message: 'User deleted successfully' },
+                { success: true, message: 'User permanently deleted' },
                 { status: 200 }
             );
         }

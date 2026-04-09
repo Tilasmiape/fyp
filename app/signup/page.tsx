@@ -15,7 +15,7 @@ interface SignupData {
   location: string;
   role: string;
   danceStyles: string[];
-  certificatePhoto: string; // base64 or url
+  certificatePhoto: string;
 }
 
 export default function SignupPage() {
@@ -36,6 +36,7 @@ export default function SignupPage() {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [successMessage, setSuccessMessage] = useState('');
 
   const availableDanceStyles = [
     'Bollywood',
@@ -58,7 +59,6 @@ export default function SignupPage() {
         ? prev.danceStyles.filter((s) => s !== style)
         : [...prev.danceStyles, style],
     }));
-    // Clear error when user selects a style
     if (errors.danceStyles) {
       setErrors((prev) => ({ ...prev, danceStyles: '' }));
     }
@@ -68,22 +68,22 @@ export default function SignupPage() {
     let error = '';
 
     switch (name) {
-      case 'fullName':
+      case 'fullName': {
         const strValue = value as string;
         if (!strValue.trim()) error = 'Full name is required';
         else if (strValue.trim().length < 2) error = 'Name must be at least 2 characters';
         else if (strValue.trim().length > 50) error = 'Name must be less than 50 characters';
         else if (!/^[a-zA-Z\s\-']+$/.test(strValue.trim())) error = 'Only letters, spaces, hyphens, and apostrophes allowed';
         break;
-
-      case 'email':
+      }
+      case 'email': {
         const emailValue = value as string;
         if (!emailValue) error = 'Email is required';
         else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) error = 'Invalid email format';
         else if (emailValue.length > 100) error = 'Email too long (max 100 chars)';
         break;
-
-      case 'password':
+      }
+      case 'password': {
         const passValue = value as string;
         if (!passValue) error = 'Password is required';
         else if (passValue.length < 8) error = 'Password must be at least 8 characters';
@@ -92,18 +92,17 @@ export default function SignupPage() {
         else if (!/[0-9]/.test(passValue)) error = 'Password must contain number';
         else if (!/[!@#$%^&*(),.?":{}|<>]/.test(passValue)) error = 'Password must contain special character';
         break;
-
-      case 'confirmPassword':
+      }
+      case 'confirmPassword': {
         const confirmValue = value as string;
         if (!confirmValue) error = 'Please confirm your password';
         else if (confirmValue !== formData.password) error = 'Passwords do not match';
         break;
-
+      }
       case 'gender':
         if (!value) error = 'Please select your gender';
         break;
-
-      case 'dob':
+      case 'dob': {
         const dobValue = value as string;
         if (!dobValue) error = 'Date of birth is required';
         else {
@@ -118,26 +117,27 @@ export default function SignupPage() {
           else if (age > 130) error = 'Invalid birth date';
         }
         break;
-
-      case 'phoneNumber':
+      }
+      case 'phoneNumber': {
         const phoneValue = value as string;
         const cleanedPhone = phoneValue.replace(/\D/g, '');
         if (!phoneValue.trim()) error = 'Phone number is required';
         else if (cleanedPhone.length !== 10) error = 'Must be exactly 10 digits';
         else if (!cleanedPhone.startsWith('98')) error = 'Must start with 98 (Nepali format)';
         break;
-
-      case 'location':
+      }
+      case 'location': {
         const locValue = value as string;
         if (locValue && locValue.trim().length > 120) error = 'Address too long (max 120 chars)';
         break;
-
-      case 'danceStyles':
+      }
+      case 'danceStyles': {
         const stylesArray = value as string[];
         if (formData.role === 'choreographer' && stylesArray.length === 0) {
           error = 'Please select at least one dance style';
         }
         break;
+      }
     }
 
     return error;
@@ -174,7 +174,7 @@ export default function SignupPage() {
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
     Object.keys(formData).forEach(key => {
-      if (key === 'role') return; // role has default
+      if (key === 'role') return;
       if (key === 'danceStyles') {
         const error = validateField(key, formData.danceStyles);
         if (error) newErrors[key] = error;
@@ -183,7 +183,6 @@ export default function SignupPage() {
         if (error) newErrors[key] = error;
       }
     });
-    // Require certificate photo for choreographers
     if (formData.role === 'choreographer' && !formData.certificatePhoto) {
       newErrors.certificatePhoto = 'Dance certificate photo is required';
     }
@@ -193,6 +192,7 @@ export default function SignupPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const newErrors = validateForm();
+    setSuccessMessage('');
 
     if (Object.keys(newErrors).length === 0) {
       setLoading(true);
@@ -200,44 +200,37 @@ export default function SignupPage() {
         const response = await fetch('/api/auth/signup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        role: formData.role,
-        fullName: formData.fullName.trim(),
-        email: formData.email.trim().toLowerCase(),
-        password: formData.password,
-        gender: formData.gender,
-        dateOfBirth: formData.dob,
-        phoneNumber: formData.phoneNumber.replace(/\D/g, ''),
-        location: formData.location.trim(),
-        danceStyles: formData.role === 'choreographer' ? formData.danceStyles : [],
-        certificatePhoto: formData.role === 'choreographer' ? formData.certificatePhoto : '',
-      }),
-    });
+          body: JSON.stringify({
+            role: formData.role,
+            fullName: formData.fullName.trim(),
+            email: formData.email.trim().toLowerCase(),
+            password: formData.password,
+            gender: formData.gender,
+            dateOfBirth: formData.dob,
+            phoneNumber: formData.phoneNumber.replace(/\D/g, ''),
+            location: formData.location.trim(),
+            danceStyles: formData.role === 'choreographer' ? formData.danceStyles : [],
+            certificatePhoto: formData.role === 'choreographer' ? formData.certificatePhoto : '',
+          }),
+        });
 
-  if (response.ok) {
+        if (response.ok) {
           const result = await response.json();
           if (result.token) {
-            // Set cookie with SameSite=Lax to persist through Stripe redirect
             document.cookie = `authToken=${result.token}; path=/; max-age=86400; SameSite=Lax`;
           }
           if (formData.role === 'choreographer') {
-            // Immediately redirect to Stripe Connect onboarding
-            const stripeRes = await fetch('/api/choreographer/stripe-connect', { method: 'POST', credentials: 'include' });
-            const stripeData = await stripeRes.json();
-            if (stripeRes.ok && stripeData.onboardingUrl) {
-              window.location.href = stripeData.onboardingUrl;
-              return;
-            } else {
-              setErrors({ submit: stripeData.error || 'Stripe onboarding failed. Please try from your dashboard.' });
-              router.push('/choreographer/home');
-              return;
-            }
-          } else {
-            router.push('/client/home');
+            const confirmationMessage = result.message || 'Your request is sent. Please wait for admin review.';
+            setSuccessMessage(confirmationMessage);
+            setErrors({});
+            alert(confirmationMessage);
+            setTimeout(() => router.push('/signin'), 1800);
+            return;
           }
+          router.push('/client/home');
         } else {
           const errorData = await response.json();
-          setErrors({ submit: errorData.message || 'Signup failed!' });
+          setErrors({ submit: errorData.error || errorData.message || 'Signup failed!' });
         }
       } catch (error) {
         console.error('Signup error:', error);
@@ -251,515 +244,466 @@ export default function SignupPage() {
   };
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, #9b59b6 0%, #8e44ad 50%, #6c3483 100%)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '20px',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    }}>
-      <div style={{
-        position: 'relative',
-        width: '100%',
-        maxWidth: '1400px',
-        minHeight: '900px',
-        borderRadius: '20px',
-        overflow: 'hidden',
-        boxShadow: '0 25px 50px rgba(0, 0, 0, 0.4)',
-        border: '1px solid rgba(255, 255, 255, 0.1)',
-        display: 'flex',
-      }}>
+    <div className="auth-page">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
 
-        {/* LEFT SIDE - BACKGROUND IMAGE */}
-        <div style={{
-          flex: 1.5,
-          position: 'relative',
-          background: 'linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '30px',
-          overflow: 'hidden',
-        }}>
-          {/* Background Image */}
-          <img
-            src="/images/signup.png"
-            alt="dancers"
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '110%',
-              objectFit: 'cover',
-              zIndex: 1,
-            }}
-          />
+        .auth-page {
+          min-height: 100vh;
+          background: #d5d9e8;
+          font-family: 'Manrope', sans-serif;
+          color: #0f172a;
+        }
+        .topbar {
+          height: 56px;
+          background: rgba(255,255,255,0.82);
+          border-bottom: 1px solid #dbe1ef;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .topbar-inner {
+          width: min(1100px, calc(100% - 28px));
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .brand {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          text-decoration: none;
+          color: inherit;
+        }
+        .brand-mark {
+          width: 28px;
+          height: 28px;
+          border-radius: 10px;
+          background: #fff;
+          box-shadow: 0 6px 14px rgba(15, 27, 60, 0.18);
+          overflow: hidden;
+          display: grid;
+          place-items: center;
+          flex-shrink: 0;
+        }
+        .brand-mark img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          transform: scale(1.2);
+        }
+        .brand-title { font-weight: 800; font-size: 25px; letter-spacing: -0.3px; line-height: 1; }
+        .brand-sub {
+          margin-top: 2px;
+          font-size: 9px;
+          letter-spacing: 2px;
+          text-transform: uppercase;
+          color: #f2a900;
+          font-weight: 700;
+          line-height: 1;
+        }
+        .top-actions { display: flex; align-items: center; gap: 22px; }
+        .top-link {
+          font-size: 11px;
+          letter-spacing: 1px;
+          font-weight: 700;
+          color: #6b7280;
+          text-decoration: none;
+          text-transform: uppercase;
+        }
+        .top-link.active { color: #0f172a; }
+        .cta {
+          background: #0d1736;
+          color: #fff;
+          border: none;
+          border-radius: 999px;
+          padding: 8px 18px;
+          font-size: 11px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.8px;
+          cursor: pointer;
+        }
 
-          {/* Logo Badge */}
-            <div style={{
-              position: 'absolute',
-              top: 30,
-              left: 30,
-              width: '70px',
-              height: '70px',
-              borderRadius: '50%',
-              backgroundColor: '#fff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 10px 25px rgba(0,0,0,0.25)',
-              overflow: 'hidden',
-              zIndex: 10,
-            }}>
-            <img
-              src="/images/logo.png"
-              alt="Logo"
-              style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scale(1.2)' }}
-            />
+        .shell {
+          min-height: calc(100vh - 56px);
+          display: grid;
+          place-items: center;
+          padding: 34px 16px;
+        }
+        .card {
+          width: min(1040px, 100%);
+          background: #f4f5f7;
+          border-radius: 30px;
+          overflow: hidden;
+          box-shadow: 0 26px 55px rgba(37, 45, 72, 0.25);
+          display: grid;
+          grid-template-columns: 32% 68%;
+          min-height: 680px;
+        }
+        .visual {
+          position: relative;
+          background: #7f82b5;
+          overflow: hidden;
+        }
+        .visual img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          filter: saturate(76%) contrast(94%);
+          opacity: 0.9;
+        }
+        .visual::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(180deg, rgba(62, 59, 128, 0.24) 0%, rgba(49, 50, 98, 0.6) 100%);
+        }
+        .visual-copy {
+          position: absolute;
+          left: 24px;
+          right: 24px;
+          bottom: 24px;
+          color: #fff;
+          z-index: 2;
+        }
+        .visual-copy h3 {
+          margin: 0;
+          font-family: 'Playfair Display', serif;
+          font-size: 34px;
+          line-height: 1.1;
+        }
+        .visual-copy p {
+          margin: 10px 0 0;
+          font-size: 13px;
+          line-height: 1.45;
+          color: rgba(255,255,255,0.86);
+        }
+
+        .form-wrap {
+          padding: 34px 32px;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+        }
+        .form-inner {
+          width: 100%;
+          max-width: 470px;
+          max-height: 86vh;
+          overflow: auto;
+          padding-right: 6px;
+        }
+        .heading {
+          text-align: center;
+          margin-bottom: 18px;
+        }
+        .heading h1 {
+          margin: 0;
+          font-family: 'Playfair Display', serif;
+          font-size: 44px;
+          color: #0f1b3c;
+          letter-spacing: -0.5px;
+        }
+        .heading p {
+          margin: 4px 0 0;
+          font-size: 10px;
+          color: #94a3b8;
+          letter-spacing: 1.5px;
+          text-transform: uppercase;
+          font-weight: 700;
+        }
+
+        .error-box {
+          padding: 10px 12px;
+          border-radius: 10px;
+          background: #fef2f2;
+          border: 1px solid #fca5a5;
+          color: #b91c1c;
+          font-size: 12px;
+          margin-bottom: 12px;
+        }
+        .success-box {
+          padding: 10px 12px;
+          border-radius: 10px;
+          background: #ecfdf5;
+          border: 1px solid #86efac;
+          color: #166534;
+          font-size: 12px;
+          margin-bottom: 12px;
+        }
+
+        .label {
+          display: block;
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: 1.1px;
+          color: #94a3b8;
+          font-weight: 800;
+          margin-bottom: 6px;
+        }
+        .field,
+        .select {
+          width: 100%;
+          border-radius: 11px;
+          border: 1px solid #d7deea;
+          background: #eef2f7;
+          padding: 11px 12px;
+          font-size: 14px;
+          color: #1f2937;
+          outline: none;
+          transition: border-color 0.2s ease, box-shadow 0.2s ease;
+          box-sizing: border-box;
+          font-family: inherit;
+        }
+        .field:focus,
+        .select:focus {
+          border-color: #6366f1;
+          box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+        }
+        .field::placeholder { color: #9ca3af; }
+        .field.error,
+        .select.error { border-color: #f87171; }
+
+        .error-text {
+          margin-top: 4px;
+          font-size: 11px;
+          color: #b91c1c;
+        }
+        .form-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+        }
+
+        .role-row {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+        }
+        .role-btn {
+          border-radius: 11px;
+          border: 1px solid #d7deea;
+          background: #f8fafc;
+          color: #64748b;
+          padding: 10px;
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: 0.9px;
+          font-weight: 800;
+          cursor: pointer;
+        }
+        .role-btn.active {
+          background: linear-gradient(135deg, #6366f1, #4f46e5);
+          color: #fff;
+          border-color: #4f46e5;
+          box-shadow: 0 8px 18px rgba(79, 70, 229, 0.35);
+        }
+
+        .styles-box {
+          border-radius: 11px;
+          border: 1px solid #d7deea;
+          background: #f8fafc;
+          padding: 10px;
+          max-height: 170px;
+          overflow: auto;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 8px;
+        }
+        .style-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 12px;
+          color: #334155;
+        }
+        .style-item input { accent-color: #4f46e5; }
+
+        .file-shell {
+          border-radius: 11px;
+          border: 1px solid #d7deea;
+          background: #eef2f7;
+          padding: 8px 10px;
+        }
+
+        .submit {
+          margin-top: 12px;
+          width: 100%;
+          border: none;
+          border-radius: 15px;
+          background: #0d1736;
+          color: #fff;
+          padding: 13px 16px;
+          font-size: 16px;
+          text-transform: uppercase;
+          letter-spacing: 1.4px;
+          font-weight: 800;
+          cursor: pointer;
+          transition: opacity 0.2s ease;
+        }
+        .submit:disabled { opacity: 0.65; cursor: not-allowed; }
+
+        .signin-note {
+          margin-top: 14px;
+          text-align: center;
+          font-size: 12px;
+          color: #94a3b8;
+        }
+        .signin-note a {
+          color: #4f46e5;
+          text-decoration: none;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.6px;
+        }
+
+        @media (max-width: 980px) {
+          .card {
+            grid-template-columns: 1fr;
+            min-height: auto;
+          }
+          .visual { min-height: 240px; }
+          .form-wrap { padding: 24px 20px 28px; }
+          .heading h1 { font-size: 36px; }
+          .form-grid { grid-template-columns: 1fr; }
+          .styles-box { grid-template-columns: 1fr; }
+        }
+      `}</style>
+
+      <header className="topbar">
+        <div className="topbar-inner">
+          <Link href="/" className="brand">
+            <span className="brand-mark">
+              <img src="/images/logo.png" alt="Step Out Logo" />
+            </span>
+            <span>
+              <div className="brand-title">Step Out</div>
+              <div className="brand-sub">Studio Hub</div>
+            </span>
+          </Link>
+          <div className="top-actions">
+            <Link className="top-link" href="/">Home</Link>
+            <Link className="top-link" href="/signin">Sign In</Link>
+            <button className="cta" onClick={() => router.push('/signup')}>Join Now</button>
           </div>
         </div>
+      </header>
 
-        {/* RIGHT SIDE - FORM */}
-        <div style={{
-          flex: 1,
-          padding: '50px 40px',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          backgroundColor: 'rgba(20, 20, 35, 0.95)',
-          position: 'relative',
-          color: 'white',
-          overflowY: 'auto',
-          maxHeight: '900px',
-        }}>
-
-
-          <h1 style={{
-            fontSize: '28px',
-            fontWeight: '700',
-            marginBottom: '8px',
-          }}>
-            Create Account
-          </h1>
-          <p style={{
-            fontSize: '13px',
-            color: 'rgba(255, 255, 255, 0.7)',
-            marginBottom: '24px',
-          }}>
-            Book Choreography Classes
-          </p>
-
-          {/* Role Selection */}
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{
-              display: 'block',
-              fontSize: '12px',
-              fontWeight: '600',
-              marginBottom: '10px',
-              color: 'rgba(255, 255, 255, 0.95)',
-            }}>
-              Choose Role *
-            </label>
-            <div style={{ display: 'flex', gap: '20px' }}>
-              {(['client', 'choreographer'] as const).map(role => (
-                <label key={role} style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  cursor: 'pointer',
-                  gap: '6px',
-                }}>
-                  <input
-                    type="radio"
-                    name="role"
-                    value={role}
-                    checked={formData.role === role}
-                    onChange={handleChange}
-                    style={{
-                      width: '16px',
-                      height: '16px',
-                      cursor: 'pointer',
-                      accentColor: '#fbbf24',
-                    }}
-                  />
-                  <span style={{
-                    fontSize: '13px',
-                    color: 'rgba(255, 255, 255, 0.8)',
-                    textTransform: 'capitalize',
-                  }}>
-                    {role}
-                  </span>
-                </label>
-              ))}
+      <main className="shell">
+        <section className="card">
+          <aside className="visual">
+            <img src="/images/signup.png" alt="Join Step Out" />
+            <div className="visual-copy">
+              <h3>Own Your Next Stage</h3>
+              <p>Become part of a focused studio collective built for growth and performance.</p>
             </div>
-          </div>
+          </aside>
 
-          {errors.submit && (
-            <div style={{
-              padding: '10px 14px',
-              backgroundColor: 'rgba(255, 107, 107, 0.2)',
-              border: '1px solid rgba(255, 107, 107, 0.5)',
-              borderRadius: '6px',
-              color: '#ff6b6b',
-              fontSize: '12px',
-              marginBottom: '16px',
-            }}>
-              {errors.submit}
-            </div>
-          )}
+          <div className="form-wrap">
+            <div className="form-inner">
+              <div className="heading">
+                <h1>Join Collective</h1>
+                <p>Step Out Studio Hub</p>
+              </div>
 
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {/* Full Name */}
-            <div>
-              <label style={{ fontSize: '12px', fontWeight: '600', marginBottom: '5px', color: 'rgba(255, 255, 255, 0.95)', display: 'block' }}>
-                Full Name *
-              </label>
-              <input
-                type="text"
-                name="fullName"
-                placeholder="Enter full name"
-                value={formData.fullName}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: '6px',
-                  border: errors.fullName ? '1px solid #ff6b6b' : '1px solid rgba(255, 255, 255, 0.2)',
-                  backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                  color: '#333',
-                  fontSize: '13px',
-                  outline: 'none',
-                  transition: 'all 0.3s ease',
-                }}
-              />
-              {errors.fullName && <span style={{ color: '#ff6b6b', fontSize: '11px', marginTop: '3px', display: 'block' }}>{errors.fullName}</span>}
-            </div>
+              {errors.submit && <div className="error-box">{errors.submit}</div>}
+              {successMessage && <div className="success-box">{successMessage}</div>}
 
-            {/* Email */}
-            <div>
-              <label style={{ fontSize: '12px', fontWeight: '600', marginBottom: '5px', color: 'rgba(255, 255, 255, 0.95)', display: 'block' }}>
-                Email *
-              </label>
-              <input
-                type="email"
-                name="email"
-                placeholder="your@email.com"
-                value={formData.email}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: '6px',
-                  border: errors.email ? '1px solid #ff6b6b' : '1px solid rgba(255, 255, 255, 0.2)',
-                  backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                  color: '#333',
-                  fontSize: '13px',
-                  outline: 'none',
-                  transition: 'all 0.3s ease',
-                }}
-              />
-              {errors.email && <span style={{ color: '#ff6b6b', fontSize: '11px', marginTop: '3px', display: 'block' }}>{errors.email}</span>}
-            </div>
+              <form onSubmit={handleSubmit}>
+                <label className="label">I Am Joining As</label>
+                <div className="role-row" style={{ marginBottom: 12 }}>
+                  <button type="button" className={`role-btn ${formData.role === 'client' ? 'active' : ''}`} onClick={() => setFormData(prev => ({ ...prev, role: 'client' }))}>Client</button>
+                  <button type="button" className={`role-btn ${formData.role === 'choreographer' ? 'active' : ''}`} onClick={() => setFormData(prev => ({ ...prev, role: 'choreographer' }))}>Choreographer</button>
+                </div>
 
-            {/* Password */}
-            <div>
-              <label style={{ fontSize: '12px', fontWeight: '600', marginBottom: '5px', color: 'rgba(255, 255, 255, 0.95)', display: 'block' }}>
-                Password *
-              </label>
-              <input
-                type="password"
-                name="password"
-                placeholder="Create strong password"
-                value={formData.password}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: '6px',
-                  border: errors.password ? '1px solid #ff6b6b' : '1px solid rgba(255, 255, 255, 0.2)',
-                  backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                  color: '#333',
-                  fontSize: '13px',
-                  outline: 'none',
-                  transition: 'all 0.3s ease',
-                }}
-              />
-              {errors.password && <span style={{ color: '#ff6b6b', fontSize: '11px', marginTop: '3px', display: 'block' }}>{errors.password}</span>}
-              <div style={{ fontSize: '10px', color: 'rgba(255, 255, 255, 0.6)', marginTop: '4px' }}>
-                Min 8 chars, 1 uppercase, 1 lowercase, 1 number, 1 special char
+                <div className="form-grid">
+                  <div>
+                    <label className="label">Full Name</label>
+                    <input className={`field ${errors.fullName ? 'error' : ''}`} type="text" name="fullName" value={formData.fullName} onChange={handleChange} onBlur={handleBlur} placeholder="Enter full name" />
+                    {errors.fullName && <div className="error-text">{errors.fullName}</div>}
+                  </div>
+                  <div>
+                    <label className="label">Email</label>
+                    <input className={`field ${errors.email ? 'error' : ''}`} type="email" name="email" value={formData.email} onChange={handleChange} onBlur={handleBlur} placeholder="name@studio.com" />
+                    {errors.email && <div className="error-text">{errors.email}</div>}
+                  </div>
+                  <div>
+                    <label className="label">Password</label>
+                    <input className={`field ${errors.password ? 'error' : ''}`} type="password" name="password" value={formData.password} onChange={handleChange} onBlur={handleBlur} placeholder="Create strong password" />
+                    {errors.password && <div className="error-text">{errors.password}</div>}
+                  </div>
+                  <div>
+                    <label className="label">Confirm Password</label>
+                    <input className={`field ${errors.confirmPassword ? 'error' : ''}`} type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} onBlur={handleBlur} placeholder="Confirm password" />
+                    {errors.confirmPassword && <div className="error-text">{errors.confirmPassword}</div>}
+                  </div>
+                  <div>
+                    <label className="label">Gender</label>
+                    <select className={`select ${errors.gender ? 'error' : ''}`} name="gender" value={formData.gender} onChange={handleChange} onBlur={handleBlur}>
+                      <option value="">Select gender</option>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                      <option value="other">Other</option>
+                    </select>
+                    {errors.gender && <div className="error-text">{errors.gender}</div>}
+                  </div>
+                  <div>
+                    <label className="label">Date Of Birth</label>
+                    <input className={`field ${errors.dob ? 'error' : ''}`} type="date" name="dob" value={formData.dob} onChange={handleChange} onBlur={handleBlur} max={new Date().toISOString().split('T')[0]} />
+                    {errors.dob && <div className="error-text">{errors.dob}</div>}
+                  </div>
+                  <div>
+                    <label className="label">Phone Number</label>
+                    <input className={`field ${errors.phoneNumber ? 'error' : ''}`} type="tel" name="phoneNumber" value={formData.phoneNumber} onChange={handleChange} onBlur={handleBlur} placeholder="98XXXXXXXX" />
+                    {errors.phoneNumber && <div className="error-text">{errors.phoneNumber}</div>}
+                  </div>
+                  <div>
+                    <label className="label">Address / Location</label>
+                    <input className={`field ${errors.location ? 'error' : ''}`} type="text" name="location" value={formData.location} onChange={handleChange} onBlur={handleBlur} placeholder="City, area, or address" />
+                    {errors.location && <div className="error-text">{errors.location}</div>}
+                  </div>
+                </div>
+
+                {formData.role === 'choreographer' && (
+                  <>
+                    <div style={{ marginTop: 12 }}>
+                      <label className="label">Dance Styles</label>
+                      <div className="styles-box">
+                        {availableDanceStyles.map((style) => (
+                          <label key={style} className="style-item">
+                            <input type="checkbox" checked={formData.danceStyles.includes(style)} onChange={() => handleDanceStyleToggle(style)} />
+                            {style}
+                          </label>
+                        ))}
+                      </div>
+                      {errors.danceStyles && <div className="error-text">{errors.danceStyles}</div>}
+                    </div>
+
+                    <div style={{ marginTop: 12 }}>
+                      <label className="label">Dance Certificate Photo</label>
+                      <div className="file-shell">
+                        <input type="file" accept="image/*" onChange={handleCertificatePhotoChange} />
+                      </div>
+                      {formData.certificatePhoto && (
+                        <img src={formData.certificatePhoto} alt="Certificate Preview" style={{ marginTop: '8px', maxWidth: '100%', maxHeight: '120px', borderRadius: '10px', border: '1px solid #d1d5db' }} />
+                      )}
+                      {errors.certificatePhoto && <div className="error-text">{errors.certificatePhoto}</div>}
+                    </div>
+                  </>
+                )}
+
+                <button type="submit" className="submit" disabled={loading}>
+                  {loading ? 'Creating Account...' : 'Register'}
+                </button>
+              </form>
+
+              <div className="signin-note">
+                Already have an account? <Link href="/signin">Sign In</Link>
               </div>
             </div>
-
-            {/* Confirm Password */}
-            <div>
-              <label style={{ fontSize: '12px', fontWeight: '600', marginBottom: '5px', color: 'rgba(255, 255, 255, 0.95)', display: 'block' }}>
-                Confirm Password *
-              </label>
-              <input
-                type="password"
-                name="confirmPassword"
-                placeholder="Confirm password"
-                value={formData.confirmPassword}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: '6px',
-                  border: errors.confirmPassword ? '1px solid #ff6b6b' : '1px solid rgba(255, 255, 255, 0.2)',
-                  backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                  color: '#333',
-                  fontSize: '13px',
-                  outline: 'none',
-                  transition: 'all 0.3s ease',
-                }}
-              />
-              {errors.confirmPassword && <span style={{ color: '#ff6b6b', fontSize: '11px', marginTop: '3px', display: 'block' }}>{errors.confirmPassword}</span>}
-            </div>
-
-            {/* Gender */}
-            <div>
-              <label style={{ fontSize: '12px', fontWeight: '600', marginBottom: '5px', color: 'rgba(255, 255, 255, 0.95)', display: 'block' }}>
-                Gender *
-              </label>
-              <select
-                name="gender"
-                value={formData.gender}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: '6px',
-                  border: errors.gender ? '1px solid #ff6b6b' : '1px solid rgba(255, 255, 255, 0.2)',
-                  backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                  color: '#333',
-                  fontSize: '13px',
-                  outline: 'none',
-                  transition: 'all 0.3s ease',
-                }}
-              >
-                <option value="">Select Gender</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="other">Other</option>
-              </select>
-              {errors.gender && <span style={{ color: '#ff6b6b', fontSize: '11px', marginTop: '3px', display: 'block' }}>{errors.gender}</span>}
-            </div>
-
-            {/* Date of Birth */}
-            <div>
-              <label style={{ fontSize: '12px', fontWeight: '600', marginBottom: '5px', color: 'rgba(255, 255, 255, 0.95)', display: 'block' }}>
-                Date of Birth *
-              </label>
-              <input
-                type="date"
-                name="dob"
-                value={formData.dob}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                max={new Date().toISOString().split('T')[0]}
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: '6px',
-                  border: errors.dob ? '1px solid #ff6b6b' : '1px solid rgba(255, 255, 255, 0.2)',
-                  backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                  color: '#333',
-                  fontSize: '13px',
-                  outline: 'none',
-                  transition: 'all 0.3s ease',
-                }}
-              />
-              {errors.dob && <span style={{ color: '#ff6b6b', fontSize: '11px', marginTop: '3px', display: 'block' }}>{errors.dob}</span>}
-            </div>
-
-            {/* Phone Number */}
-            <div>
-              <label style={{ fontSize: '12px', fontWeight: '600', marginBottom: '5px', color: 'rgba(255, 255, 255, 0.95)', display: 'block' }}>
-                Phone Number *
-              </label>
-              <input
-                type="tel"
-                name="phoneNumber"
-                placeholder="98XXXXXXXX"
-                value={formData.phoneNumber}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: '6px',
-                  border: errors.phoneNumber ? '1px solid #ff6b6b' : '1px solid rgba(255, 255, 255, 0.2)',
-                  backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                  color: '#333',
-                  fontSize: '13px',
-                  outline: 'none',
-                  transition: 'all 0.3s ease',
-                }}
-              />
-              {errors.phoneNumber && <span style={{ color: '#ff6b6b', fontSize: '11px', marginTop: '3px', display: 'block' }}>{errors.phoneNumber}</span>}
-            </div>
-
-            {/* Address / Location */}
-            <div>
-              <label style={{ fontSize: '12px', fontWeight: '600', marginBottom: '5px', color: 'rgba(255, 255, 255, 0.95)', display: 'block' }}>
-                Address / Location
-              </label>
-              <input
-                type="text"
-                name="location"
-                placeholder="City, area, or address"
-                value={formData.location}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: '6px',
-                  border: errors.location ? '1px solid #ff6b6b' : '1px solid rgba(255, 255, 255, 0.2)',
-                  backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                  color: '#333',
-                  fontSize: '13px',
-                  outline: 'none',
-                  transition: 'all 0.3s ease',
-                }}
-              />
-              {errors.location && <span style={{ color: '#ff6b6b', fontSize: '11px', marginTop: '3px', display: 'block' }}>{errors.location}</span>}
-            </div>
-
-
-            {/* Dance Styles - Only for Choreographer */}
-            {formData.role === 'choreographer' && (
-              <>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: '600', marginBottom: '5px', color: 'rgba(255, 255, 255, 0.95)', display: 'block' }}>
-                    Dance Styles * (Select all that apply)
-                  </label>
-                  <div style={{
-                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                    border: errors.danceStyles ? '1px solid #ff6b6b' : '1px solid rgba(255, 255, 255, 0.2)',
-                    borderRadius: '6px',
-                    padding: '12px',
-                    maxHeight: '200px',
-                    overflowY: 'auto',
-                  }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                      {availableDanceStyles.map((style) => (
-                        <label
-                          key={style}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            cursor: 'pointer',
-                            padding: '6px',
-                            borderRadius: '4px',
-                            transition: 'background-color 0.2s',
-                            fontSize: '13px',
-                            color: 'rgba(255, 255, 255, 0.9)',
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={formData.danceStyles.includes(style)}
-                            onChange={() => handleDanceStyleToggle(style)}
-                            style={{
-                              width: '16px',
-                              height: '16px',
-                              cursor: 'pointer',
-                              accentColor: '#fbbf24',
-                            }}
-                          />
-                          {style}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                  {errors.danceStyles && <span style={{ color: '#ff6b6b', fontSize: '11px', marginTop: '3px', display: 'block' }}>{errors.danceStyles}</span>}
-                  {formData.danceStyles.length > 0 && (
-                    <p style={{ fontSize: '11px', color: '#4ade80', marginTop: '6px' }}>
-                      Selected: {formData.danceStyles.join(', ')}
-                    </p>
-                  )}
-                </div>
-
-                {/* Certificate Photo - Only for Choreographer */}
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: '600', marginBottom: '5px', color: 'rgba(255, 255, 255, 0.95)', display: 'block' }}>
-                    Dance Certificate Photo *
-                  </label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleCertificatePhotoChange}
-                    style={{
-                      width: '100%',
-                      padding: '8px 0',
-                      borderRadius: '6px',
-                      border: errors.certificatePhoto ? '1px solid #ff6b6b' : '1px solid rgba(255, 255, 255, 0.2)',
-                      backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                      color: '#333',
-                      fontSize: '13px',
-                      outline: 'none',
-                      transition: 'all 0.3s ease',
-                    }}
-                  />
-                  {formData.certificatePhoto && (
-                    <img src={formData.certificatePhoto} alt="Certificate Preview" style={{ marginTop: '8px', maxWidth: '100%', maxHeight: '120px', borderRadius: '6px', border: '1px solid #eee' }} />
-                  )}
-                  {errors.certificatePhoto && <span style={{ color: '#ff6b6b', fontSize: '11px', marginTop: '3px', display: 'block' }}>{errors.certificatePhoto}</span>}
-                </div>
-              </>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                padding: '11px 20px',
-                backgroundColor: loading ? '#999' : '#fbbf24',
-                color: '#000',
-                border: 'none',
-                borderRadius: '6px',
-                fontSize: '14px',
-                fontWeight: '700',
-                cursor: loading ? 'not-allowed' : 'pointer',
-                marginTop: '8px',
-                transition: 'all 0.3s ease',
-                boxShadow: '0 4px 15px rgba(251, 191, 36, 0.3)',
-                width: '100%',
-              }}
-            >
-              {loading ? 'Creating Account...' : 'Register'}
-            </button>
-          </form>
-
-          <p style={{
-            textAlign: 'center',
-            fontSize: '12px',
-            color: 'rgba(255, 255, 255, 0.7)',
-            marginTop: '16px',
-          }}>
-            Already have an account?{' '}
-            <Link href="/signin" style={{
-              color: '#fbbf24',
-              textDecoration: 'none',
-              fontWeight: '700',
-            }}>
-              Sign In
-            </Link>
-          </p>
-        </div>
-      </div>
+          </div>
+        </section>
+      </main>
     </div>
   );
 }

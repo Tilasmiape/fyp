@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import ChoreographerNavbar from '@/components/ChoreographerNavbar';
 
 interface DanceVideo {
   id: string;
@@ -36,7 +36,6 @@ interface NotificationItem {
 }
 
 export default function ChoreographerNotificationsPage() {
-  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [profile, setProfile] = useState<ProfilePayload>({});
@@ -109,14 +108,6 @@ export default function ChoreographerNotificationsPage() {
 
     // Add profile-based notifications
     if (profile.approvalStatus) {
-      if (profile.approvalStatus === 'approved') {
-        list.push({
-          id: 'account-approved',
-          type: 'approved',
-          title: 'Account Approved',
-          message: 'Your choreographer account has been approved. You are now visible to clients.',
-        });
-      }
       if (profile.approvalStatus === 'pending') {
         list.push({
           id: 'account-pending',
@@ -171,59 +162,21 @@ export default function ChoreographerNotificationsPage() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: '#0d0d0f',
-      color: '#fff',
-      fontFamily: '"DM Sans", sans-serif',
+      background: '#f6f7fb',
+      color: '#0f172a',
+      fontFamily: '"Manrope", sans-serif',
     }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Manrope:wght@300;400;500;600;700&display=swap');
         * { box-sizing: border-box; }
       `}</style>
 
-      <nav style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: '18px 48px',
-        borderBottom: '1px solid rgba(255,255,255,0.07)',
-        position: 'sticky',
-        top: 0,
-        background: 'rgba(13,13,15,0.92)',
-        backdropFilter: 'blur(12px)',
-        zIndex: 10,
-      }}>
-        <span style={{
-          fontFamily: '"Syne", sans-serif',
-          fontWeight: 800,
-          fontSize: '22px',
-          letterSpacing: '-0.5px',
-          background: 'linear-gradient(135deg, #f0c040 0%, #e07b20 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-        }}>
-          Step Out Studio
-        </span>
-
-        <button
-          onClick={() => router.push('/choreographer/home')}
-          style={{
-            background: 'rgba(255,255,255,0.06)',
-            border: '1px solid rgba(255,255,255,0.12)',
-            color: 'rgba(255,255,255,0.75)',
-            padding: '8px 18px',
-            borderRadius: '8px',
-            fontSize: '14px',
-            cursor: 'pointer',
-          }}
-        >
-          Back to Dashboard
-        </button>
-      </nav>
+      <ChoreographerNavbar subtitle="Notifications" />
 
       <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '36px 40px' }}>
         <div style={{ marginBottom: '20px' }}>
-          <h1 style={{ margin: 0, fontSize: '26px', fontWeight: 800, fontFamily: '"Syne", sans-serif' }}>Notifications</h1>
-          <p style={{ margin: '6px 0 0', color: 'rgba(255,255,255,0.5)', fontSize: '14px' }}>
+          <h1 style={{ margin: 0, fontSize: '26px', fontWeight: 700, fontFamily: '"Playfair Display", serif' }}>Notifications</h1>
+          <p style={{ margin: '6px 0 0', color: '#64748b', fontSize: '14px' }}>
             Approval updates and rejection messages will appear here.
           </p>
         </div>
@@ -243,17 +196,17 @@ export default function ChoreographerNotificationsPage() {
         )}
 
         <div style={{
-          background: 'rgba(255,255,255,0.03)',
-          border: '1px solid rgba(255,255,255,0.08)',
+          background: '#fff',
+          border: '1px solid #e7e9f0',
           borderRadius: '18px',
           padding: '24px',
         }}>
           {loading ? (
-            <div style={{ color: 'rgba(255,255,255,0.5)', padding: '30px 0', textAlign: 'center' }}>
+            <div style={{ color: '#94a3b8', padding: '30px 0', textAlign: 'center' }}>
               Loading notifications...
             </div>
           ) : notifications.length === 0 ? (
-            <div style={{ color: 'rgba(255,255,255,0.5)', padding: '30px 0', textAlign: 'center' }}>
+            <div style={{ color: '#94a3b8', padding: '30px 0', textAlign: 'center' }}>
               No notifications yet.
             </div>
           ) : (
@@ -262,8 +215,8 @@ export default function ChoreographerNotificationsPage() {
                 const badge = badgeStyle(n.type);
                 return (
                   <div key={n.id} style={{
-                    background: 'rgba(255,255,255,0.02)',
-                    border: '1px solid rgba(255,255,255,0.08)',
+                    background: '#f8fafc',
+                    border: '1px solid #e7e9f0',
                     borderRadius: '14px',
                     padding: '16px 18px',
                     display: 'flex',
@@ -286,11 +239,11 @@ export default function ChoreographerNotificationsPage() {
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: '15px', fontWeight: 700, marginBottom: '4px' }}>{n.title}</div>
-                      <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '13px', lineHeight: '1.5' }}>
+                      <div style={{ color: '#6b7280', fontSize: '13px', lineHeight: '1.5' }}>
                         {n.message}
                       </div>
                       {n.date && (
-                        <div style={{ marginTop: '6px', fontSize: '12px', color: 'rgba(255,255,255,0.35)' }}>
+                        <div style={{ marginTop: '6px', fontSize: '12px', color: '#94a3b8' }}>
                           {new Date(n.date).toLocaleDateString()}
                         </div>
                       )}
@@ -305,3 +258,4 @@ export default function ChoreographerNotificationsPage() {
     </div>
   );
 }
+

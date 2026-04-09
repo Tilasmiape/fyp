@@ -70,6 +70,10 @@ export async function POST(request: NextRequest) {
 
     // ── MOCK MODE: Skip Stripe if choreographer has a mock account ──
     if (choreographer.stripeAccountId.startsWith('acct_mock_')) {
+      const totalAmount = Number(reservation.total || 0);
+      const choreographerEarnings = Math.round(totalAmount * 0.88 * 100) / 100;
+      const platformFee = Math.round((totalAmount - choreographerEarnings) * 100) / 100;
+
       reservation.paymentStatus = 'paid';
       reservation.status = 'confirmed';
       reservation.paidAt = new Date();
@@ -77,6 +81,9 @@ export async function POST(request: NextRequest) {
       reservation.stripeCheckoutSessionId = `cs_mock_${Date.now()}`;
       reservation.paymentCurrency = (process.env.STRIPE_CURRENCY || 'usd').toLowerCase();
       reservation.paymentAmount = Math.max(1, Math.round(Number(reservation.total || 0) * 100));
+      reservation.choreographerEarnings = choreographerEarnings;
+      reservation.platformFee = platformFee;
+      reservation.payoutStatus = 'scheduled';
       await reservation.save();
 
       return NextResponse.json(

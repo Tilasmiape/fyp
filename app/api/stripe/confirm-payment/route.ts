@@ -48,9 +48,16 @@ export async function POST(request: NextRequest) {
 
     // Idempotent — don't overwrite if webhook already updated it
     if (session.paymentStatus !== 'paid') {
+      const totalAmount = Number(session.total || 0);
+      const choreographerEarnings = Math.round(totalAmount * 0.88 * 100) / 100;
+      const platformFee = Math.round((totalAmount - choreographerEarnings) * 100) / 100;
+
       session.paymentStatus = 'paid';
       session.status = 'confirmed';
       session.paidAt = new Date();
+      session.choreographerEarnings = choreographerEarnings;
+      session.platformFee = platformFee;
+      session.payoutStatus = 'scheduled';
       if (stripeSession.payment_intent) {
         session.stripePaymentIntentId = String(stripeSession.payment_intent);
       }
@@ -92,9 +99,16 @@ export async function GET(request: NextRequest) {
         const session = await Session.findById(dbSessionId);
         if (session) {
           if (session.paymentStatus !== 'paid') {
+            const totalAmount = Number(session.total || 0);
+            const choreographerEarnings = Math.round(totalAmount * 0.88 * 100) / 100;
+            const platformFee = Math.round((totalAmount - choreographerEarnings) * 100) / 100;
+
             session.paymentStatus = 'paid';
             session.status = 'confirmed';
             session.paidAt = new Date();
+            session.choreographerEarnings = choreographerEarnings;
+            session.platformFee = platformFee;
+            session.payoutStatus = 'scheduled';
             await session.save();
           }
           return NextResponse.redirect(new URL('/client/sessions', request.url));

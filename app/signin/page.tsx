@@ -45,7 +45,7 @@ export default function SigninPage() {
   const handleSignin = async (e: React.FormEvent) => {
     e.preventDefault();
     const newErrors = validateForm();
-    
+
     if (Object.keys(newErrors).length === 0) {
       setLoading(true);
       try {
@@ -54,13 +54,11 @@ export default function SigninPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData),
         });
-        
+
         const result = await response.json();
         if (response.ok) {
           if (result.token) {
-            // Set cookie with SameSite=Lax to persist through Stripe redirect
             document.cookie = `authToken=${result.token}; path=/; max-age=86400; SameSite=Lax`;
-            // Also store in localStorage as a backup for redirects
             localStorage.setItem('authToken', result.token);
           }
           const userRole = result.user?.role || 'client';
@@ -91,250 +89,394 @@ export default function SigninPage() {
   };
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, #7c3aed 0%, #a855f7 50%, #ec4899 100%)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '20px',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    }}>
-      <div style={{
-        display: 'flex',
-        backgroundColor: 'rgba(20, 20, 35, 0.95)',
-        borderRadius: '16px',
-        border: '1px solid rgba(255, 255, 255, 0.1)',
-        maxWidth: '1000px',
-        width: '100%',
-        minHeight: '550px',
-        boxShadow: '0 25px 50px rgba(0, 0, 0, 0.4)',
-        overflow: 'hidden',
-      }}>
-        {/* LEFT SIDE - BACKGROUND IMAGE */}
-        <div style={{
-          flex: 1.5,
-          position: 'relative',
-          background: 'linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '30px',
-          overflow: 'hidden',
-        }}>
-          <img 
-            src="/images/signin.png"
-            alt="dancers"
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '110%',
-              height: '100%',
-              objectFit: 'cover',
-              zIndex: 1,
-            }}
-          />
-          <div style={{
-            position: 'absolute',
-            top: 30,
-            left: 30,
-            width: '70px',
-            height: '70px',
-            borderRadius: '50%',
-            backgroundColor: '#fff',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            border: '2px solid rgba(251, 191, 36, 0.5)',
-            boxShadow: '0 10px 25px rgba(0,0,0,0.25)',
-            overflow: 'hidden',
-            zIndex: 10,
-          }}>
-            <img 
-              src="/images/logo.png"
-              alt="Logo"
-              style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scale(1.2)' }}
-            />
+    <div className="auth-page">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
+
+        .auth-page {
+          min-height: 100vh;
+          background: #d5d9e8;
+          font-family: 'Manrope', sans-serif;
+          color: #0f172a;
+        }
+        .topbar {
+          height: 56px;
+          background: rgba(255,255,255,0.82);
+          border-bottom: 1px solid #dbe1ef;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .topbar-inner {
+          width: min(1100px, calc(100% - 28px));
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .brand {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          text-decoration: none;
+          color: inherit;
+        }
+        .brand-mark {
+          width: 28px;
+          height: 28px;
+          border-radius: 10px;
+          background: #fff;
+          box-shadow: 0 6px 14px rgba(15, 27, 60, 0.18);
+          overflow: hidden;
+          display: grid;
+          place-items: center;
+          flex-shrink: 0;
+        }
+        .brand-mark img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          transform: scale(1.2);
+        }
+        .brand-text {
+          line-height: 1;
+        }
+        .brand-title {
+          font-weight: 800;
+          font-size: 25px;
+          letter-spacing: -0.3px;
+        }
+        .brand-sub {
+          margin-top: 2px;
+          font-size: 9px;
+          letter-spacing: 2px;
+          text-transform: uppercase;
+          color: #f2a900;
+          font-weight: 700;
+        }
+        .top-actions {
+          display: flex;
+          align-items: center;
+          gap: 22px;
+        }
+        .top-link {
+          font-size: 11px;
+          letter-spacing: 1px;
+          font-weight: 700;
+          color: #6b7280;
+          text-decoration: none;
+          text-transform: uppercase;
+        }
+        .top-link.active { color: #0f172a; }
+        .cta {
+          background: #0d1736;
+          color: #fff;
+          border: none;
+          border-radius: 999px;
+          padding: 8px 18px;
+          font-size: 11px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.8px;
+          cursor: pointer;
+        }
+
+        .shell {
+          min-height: calc(100vh - 56px);
+          display: grid;
+          place-items: center;
+          padding: 34px 16px;
+        }
+        .card {
+          width: min(960px, 100%);
+          background: #f4f5f7;
+          border-radius: 30px;
+          overflow: hidden;
+          box-shadow: 0 26px 55px rgba(37, 45, 72, 0.25);
+          display: grid;
+          grid-template-columns: 34% 66%;
+          min-height: 560px;
+        }
+        .visual {
+          position: relative;
+          background: #7f82b5;
+          overflow: hidden;
+        }
+        .visual img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          filter: saturate(75%) contrast(94%);
+          opacity: 0.9;
+        }
+        .visual::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(180deg, rgba(62, 59, 128, 0.25) 0%, rgba(49, 50, 98, 0.58) 100%);
+        }
+        .visual-copy {
+          position: absolute;
+          left: 28px;
+          right: 28px;
+          bottom: 26px;
+          color: #fff;
+          z-index: 2;
+        }
+        .visual-copy h3 {
+          margin: 0;
+          font-family: 'Playfair Display', serif;
+          font-size: 39px;
+          line-height: 1.08;
+        }
+        .visual-copy p {
+          margin: 10px 0 0;
+          font-size: 14px;
+          line-height: 1.45;
+          color: rgba(255,255,255,0.86);
+        }
+
+        .form-wrap {
+          padding: 38px 34px;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+        }
+        .form-inner {
+          width: 100%;
+          max-width: 395px;
+        }
+        .heading {
+          text-align: center;
+          margin-bottom: 22px;
+        }
+        .heading h1 {
+          margin: 0;
+          font-family: 'Playfair Display', serif;
+          font-size: 47px;
+          color: #0f1b3c;
+          letter-spacing: -0.6px;
+        }
+        .heading p {
+          margin: 4px 0 0;
+          font-size: 10px;
+          color: #94a3b8;
+          letter-spacing: 1.5px;
+          text-transform: uppercase;
+          font-weight: 700;
+        }
+
+        .label {
+          display: block;
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: 1.15px;
+          color: #94a3b8;
+          font-weight: 800;
+          margin-bottom: 6px;
+        }
+        .field {
+          width: 100%;
+          border-radius: 11px;
+          border: 1px solid #d7deea;
+          background: #eef2f7;
+          padding: 12px 14px;
+          font-size: 14px;
+          color: #1f2937;
+          outline: none;
+          transition: border-color 0.2s ease, box-shadow 0.2s ease;
+          box-sizing: border-box;
+        }
+        .field:focus {
+          border-color: #6366f1;
+          box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+        }
+        .field::placeholder { color: #9ca3af; }
+
+        .error-box {
+          padding: 10px 12px;
+          border-radius: 10px;
+          background: #fef2f2;
+          border: 1px solid #fca5a5;
+          color: #b91c1c;
+          font-size: 12px;
+          margin-bottom: 12px;
+        }
+        .error-text {
+          margin-top: 4px;
+          font-size: 11px;
+          color: #b91c1c;
+        }
+
+        .role-shell {
+          margin-top: 14px;
+        }
+        .role-row {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+        }
+        .role-chip {
+          border-radius: 11px;
+          border: 1px solid #d7deea;
+          background: #f8fafc;
+          color: #64748b;
+          padding: 9px 10px;
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: 0.8px;
+          font-weight: 800;
+          text-align: center;
+        }
+        .role-chip.active {
+          background: linear-gradient(135deg, #6366f1, #4f46e5);
+          color: #fff;
+          border-color: #4f46e5;
+          box-shadow: 0 8px 18px rgba(79, 70, 229, 0.35);
+        }
+
+        .meta-row {
+          margin-top: 14px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 10px;
+          text-transform: uppercase;
+          letter-spacing: 0.8px;
+          color: #94a3b8;
+          font-weight: 700;
+        }
+        .recovery {
+          color: #4f46e5;
+          text-decoration: none;
+        }
+
+        .submit {
+          margin-top: 12px;
+          width: 100%;
+          border: none;
+          border-radius: 15px;
+          background: #0d1736;
+          color: #fff;
+          padding: 13px 16px;
+          font-size: 18px;
+          text-transform: uppercase;
+          letter-spacing: 2px;
+          font-weight: 800;
+          cursor: pointer;
+          transition: opacity 0.2s ease;
+        }
+        .submit:disabled {
+          opacity: 0.65;
+          cursor: not-allowed;
+        }
+
+        .join-note {
+          margin-top: 16px;
+          text-align: center;
+          font-size: 12px;
+          color: #94a3b8;
+        }
+        .join-note a {
+          color: #4f46e5;
+          text-decoration: none;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.6px;
+        }
+
+        @media (max-width: 900px) {
+          .card {
+            grid-template-columns: 1fr;
+            min-height: auto;
+          }
+          .visual { min-height: 260px; }
+          .form-wrap { padding: 28px 22px 34px; }
+          .heading h1 { font-size: 39px; }
+        }
+      `}</style>
+
+      <header className="topbar">
+        <div className="topbar-inner">
+          <Link href="/" className="brand">
+            <span className="brand-mark">
+              <img src="/images/logo.png" alt="Step Out Logo" />
+            </span>
+            <span className="brand-text">
+              <div className="brand-title">Step Out</div>
+              <div className="brand-sub">Studio Hub</div>
+            </span>
+          </Link>
+          <div className="top-actions">
+            <Link className="top-link" href="/">Home</Link>
+            <Link className="top-link active" href="/signin">Sign In</Link>
+            <button className="cta" onClick={() => router.push('/signup')}>Join Now</button>
           </div>
         </div>
+      </header>
 
-        {/* RIGHT SIDE - FORM CARD */}
-        <div style={{
-          flex: 1,
-          padding: '50px 45px',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          color: 'white',
-        }}>
-          <h1 style={{
-            fontSize: '32px',
-            fontWeight: '700',
-            marginBottom: '6px',
-            color: '#fbbf24',
-          }}>
-            Sign In
-          </h1>
-          
-          <p style={{
-            fontSize: '13px',
-            color: 'rgba(255, 255, 255, 0.6)',
-            marginBottom: '28px',
-          }}>
-            Enter your credentials to continue
-          </p>
-
-          {errors.submit && (
-            <div style={{
-              padding: '10px 14px',
-              backgroundColor: 'rgba(255, 107, 107, 0.2)',
-              border: '1px solid rgba(255, 107, 107, 0.5)',
-              borderRadius: '6px',
-              color: '#ff6b6b',
-              fontSize: '12px',
-              marginBottom: '16px',
-            }}>
-              {errors.submit}
+      <main className="shell">
+        <section className="card">
+          <aside className="visual">
+            <img src="/images/signin.jpg" alt="Step Out" />
+            <div className="visual-copy">
+              <h3>Master Your Art Form</h3>
+              <p>Join Nepal&apos;s most elite collective of artists and enthusiasts.</p>
             </div>
-          )}
+          </aside>
 
-          <form onSubmit={handleSignin} style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '16px',
-          }}>
-            <div>
-              <label style={{
-                display: 'block',
-                fontSize: '12px',
-                fontWeight: '600',
-                marginBottom: '6px',
-                color: 'rgba(255, 255, 255, 0.9)',
-              }}>
-                Email
-              </label>
-              <input
-                type="email"
-                name="email"
-                placeholder="your@email.com"
-                value={formData.email}
-                onChange={handleChange}
-                style={{
-                  width: '100%',
-                  padding: '11px 14px',
-                  borderRadius: '6px',
-                  border: `1px solid ${errors.email ? '#ff6b6b' : 'rgba(255, 255, 255, 0.2)'}`,
-                  backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                  color: '#333',
-                  fontSize: '13px',
-                  outline: 'none',
-                  transition: 'all 0.3s',
-                  boxSizing: 'border-box',
-                }}
-                onFocus={(e) => {
-                  e.currentTarget.style.borderColor = 'rgba(251, 191, 36, 0.6)';
-                  e.currentTarget.style.boxShadow = '0 0 0 3px rgba(251, 191, 36, 0.1)';
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.borderColor = errors.email ? '#ff6b6b' : 'rgba(255, 255, 255, 0.2)';
-                  e.currentTarget.style.boxShadow = 'none';
-                }}
-              />
-              {errors.email && <p style={{ color: '#ff6b6b', fontSize: '11px', marginTop: '3px' }}>{errors.email}</p>}
+          <div className="form-wrap">
+            <div className="form-inner">
+              <div className="heading">
+                <h1>Welcome Back</h1>
+                <p>Step Out Studio Hub</p>
+              </div>
+
+              {errors.submit && <div className="error-box">{errors.submit}</div>}
+
+              <form onSubmit={handleSignin}>
+                <label className="label">Email Address</label>
+                <input
+                  className="field"
+                  type="email"
+                  name="email"
+                  placeholder="name@studio.com"
+                  value={formData.email}
+                  onChange={handleChange}
+                />
+                {errors.email && <div className="error-text">{errors.email}</div>}
+
+                <div style={{ height: 14 }} />
+
+                <label className="label">Password</label>
+                <input
+                  className="field"
+                  type="password"
+                  name="password"
+                  placeholder="******"
+                  value={formData.password}
+                  onChange={handleChange}
+                />
+                {errors.password && <div className="error-text">{errors.password}</div>}
+
+                
+
+                <div className="meta-row">
+                  <span>Stay Logged In</span>
+                  <Link href="/forgot-password" className="recovery">Recovery</Link>
+                </div>
+
+                <button type="submit" className="submit" disabled={loading}>
+                  {loading ? 'Signing In...' : 'Sign In'}
+                </button>
+              </form>
+
+              <div className="join-note">
+                New to the studio? <Link href="/signup">Join Collective</Link>
+              </div>
             </div>
-
-            <div>
-              <label style={{
-                display: 'block',
-                fontSize: '12px',
-                fontWeight: '600',
-                marginBottom: '6px',
-                color: 'rgba(255, 255, 255, 0.9)',
-              }}>
-                Password
-              </label>
-              <input
-                type="password"
-                name="password"
-                placeholder="Enter your password"
-                value={formData.password}
-                onChange={handleChange}
-                style={{
-                  width: '100%',
-                  padding: '11px 14px',
-                  borderRadius: '6px',
-                  border: `1px solid ${errors.password ? '#ff6b6b' : 'rgba(255, 255, 255, 0.2)'}`,
-                  backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                  color: '#333',
-                  fontSize: '13px',
-                  outline: 'none',
-                  transition: 'all 0.3s',
-                  boxSizing: 'border-box',
-                }}
-                onFocus={(e) => {
-                  e.currentTarget.style.borderColor = 'rgba(251, 191, 36, 0.6)';
-                  e.currentTarget.style.boxShadow = '0 0 0 3px rgba(251, 191, 36, 0.1)';
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.borderColor = errors.password ? '#ff6b6b' : 'rgba(255, 255, 255, 0.2)';
-                  e.currentTarget.style.boxShadow = 'none';
-                }}
-              />
-              {errors.password && <p style={{ color: '#ff6b6b', fontSize: '11px', marginTop: '3px' }}>{errors.password}</p>}
-            </div>
-
-            <div style={{ textAlign: 'right' }}>
-              <Link href="/forgot-password" style={{
-                fontSize: '12px',
-                color: '#fbbf24',
-                textDecoration: 'none',
-                fontWeight: '600',
-                transition: 'color 0.3s',
-              }}>
-                Forgot Password?
-              </Link>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                padding: '12px 24px',
-                backgroundColor: loading ? '#999' : '#fbbf24',
-                color: '#000',
-                border: 'none',
-                borderRadius: '6px',
-                fontSize: '14px',
-                fontWeight: '700',
-                cursor: loading ? 'not-allowed' : 'pointer',
-                marginTop: '8px',
-                transition: 'all 0.3s',
-                width: '100%',
-              }}
-            >
-              {loading ? 'Signing In...' : 'Sign In'}
-            </button>
-          </form>
-
-          <p style={{
-            textAlign: 'center',
-            fontSize: '12px',
-            color: 'rgba(255, 255, 255, 0.6)',
-            marginTop: '20px',
-          }}>
-            Don&apos;t have an account?{' '}
-            <Link href="/signup" style={{
-              color: '#fbbf24',
-              textDecoration: 'none',
-              fontWeight: '700',
-            }}>
-              Sign Up
-            </Link>
-          </p>
-        </div>
-      </div>
+          </div>
+        </section>
+      </main>
     </div>
   );
 }

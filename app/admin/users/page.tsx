@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import AdminNavbar from '@/components/AdminNavbar';
 
 interface User {
     _id: string;
@@ -203,8 +204,9 @@ export default function UsersPage() {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 p-8">
-            <div className="max-w-6xl mx-auto">
+        <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800">
+            <AdminNavbar subtitle="Users Management" />
+            <div className="max-w-6xl mx-auto p-8">
                 <div className="flex justify-between items-center mb-6">
                     <h1 className="text-3xl font-bold text-white">
                         {roleFilter ? `${roleFilter.charAt(0).toUpperCase() + roleFilter.slice(1)}s Management` : 'Users Management'} 👥
@@ -549,3 +551,4 @@ export default function UsersPage() {
         </div>
     );
 }
+

@@ -2,6 +2,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Inter } from "next/font/google";
+import PanelThemeController from "@/components/PanelThemeController";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -18,7 +19,10 @@ export default function RootLayout({
   return (
     
       <html lang="en" suppressHydrationWarning>
-        <body className={inter.className} suppressHydrationWarning>{children}</body>
+        <body className={inter.className} suppressHydrationWarning>
+          <PanelThemeController />
+          {children}
+        </body>
       </html>)
    
 }
