@@ -17,6 +17,8 @@ export default function SigninPage() {
     password: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(null);
+  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -61,6 +63,8 @@ export default function SigninPage() {
             document.cookie = `authToken=${result.token}; path=/; max-age=86400; SameSite=Lax`;
             localStorage.setItem('authToken', result.token);
           }
+          setAttemptsRemaining(null);
+          setLockedUntil(null);
           const userRole = result.user?.role || 'client';
           if (userRole === 'super-admin') {
             router.push('/admin/home');
@@ -70,8 +74,15 @@ export default function SigninPage() {
             router.push('/client/home');
           }
         } else {
-          if (response.status === 403 && result?.reason) {
-            alert(result.reason);
+          if (result?.locked) {
+            setLockedUntil(result.lockedUntil || null);
+            setAttemptsRemaining(0);
+            setErrors({ submit: result.error });
+          } else if (result?.attemptsRemaining !== undefined) {
+            setAttemptsRemaining(result.attemptsRemaining);
+            setLockedUntil(null);
+            setErrors({ submit: result.error });
+          } else if (response.status === 403 && result?.reason) {
             setErrors({ submit: result.reason });
           } else {
             setErrors({ submit: result?.error || 'Invalid email or password!' });
@@ -431,7 +442,21 @@ export default function SigninPage() {
                 <p>Step Out Studio Hub</p>
               </div>
 
-              {errors.submit && <div className="error-box">{errors.submit}</div>}
+              {errors.submit && (
+                <div className="error-box">
+                  {errors.submit}
+                  {attemptsRemaining !== null && attemptsRemaining > 0 && (
+                    <div style={{ marginTop: '6px', fontSize: '11px', fontWeight: 700, color: '#92400e', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: '6px', padding: '5px 8px' }}>
+                      ⚠️ {attemptsRemaining} attempt{attemptsRemaining === 1 ? '' : 's'} remaining before lockout
+                    </div>
+                  )}
+                  {lockedUntil && (
+                    <div style={{ marginTop: '6px', fontSize: '11px', fontWeight: 700, color: '#991b1b' }}>
+                      🔒 Try again after {new Date(lockedUntil).toLocaleTimeString()}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <form onSubmit={handleSignin}>
                 <label className="label">Email Address</label>
@@ -462,7 +487,7 @@ export default function SigninPage() {
 
                 <div className="meta-row">
                   <span>Stay Logged In</span>
-                  <Link href="/forgot-password" className="recovery">Recovery</Link>
+                  <Link href="/forgot-password" className="recovery">Forgot Password?</Link>
                 </div>
 
                 <button type="submit" className="submit" disabled={loading}>
