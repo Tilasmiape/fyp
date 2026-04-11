@@ -216,9 +216,6 @@ export default function SignupPage() {
 
         if (response.ok) {
           const result = await response.json();
-          if (result.token) {
-            document.cookie = `authToken=${result.token}; path=/; max-age=86400; SameSite=Lax`;
-          }
           if (formData.role === 'choreographer') {
             const confirmationMessage = result.message || 'Your request is sent. Please wait for admin review.';
             setSuccessMessage(confirmationMessage);

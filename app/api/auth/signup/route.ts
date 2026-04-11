@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import jwt from 'jsonwebtoken';
 import { connectDB } from '@/lib/db';
+import { issueLegacyAuthToken } from '@/lib/auth/legacy-jwt';
+import { establishSession } from '@/lib/auth/session';
 import User from '@/models/User';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-key-change-in-prod';
+function withLegacyAuthCookie(response: NextResponse, token: string) {
+  response.cookies.set('authToken', token, {
+    path: '/',
+    maxAge: 60 * 60 * 8,
+    sameSite: 'lax',
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+  });
+  return response;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,74 +21,46 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { fullName, email, password, dateOfBirth, phoneNumber, role, location, certificatePhoto } = body;
 
-    // Do not allow creating super-admin through public signup
     if (role === 'super-admin') {
-      return NextResponse.json(
-        { error: 'Cannot create super-admin via signup' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Cannot create super-admin via signup' }, { status: 403 });
     }
 
     if (!fullName || !email || !password || !role) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Require certificate photo and at least one dance style for choreographers
     if (role === 'choreographer' && !certificatePhoto) {
-      return NextResponse.json(
-        { error: 'Dance certificate photo is required for choreographers' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Dance certificate photo is required for choreographers' }, { status: 400 });
     }
+
     if (role === 'choreographer' && (!Array.isArray(body.danceStyles) || body.danceStyles.length === 0)) {
-      return NextResponse.json(
-        { error: 'At least one dance style is required for choreographers' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'At least one dance style is required for choreographers' }, { status: 400 });
     }
+
+    const normalizedEmail = String(email).toLowerCase();
 
     const userExists = await User.findOne({
-      $or: [
-        { email: email.toLowerCase() },
-        ...(phoneNumber ? [{ phoneNumber }] : []),
-      ],
+      $or: [{ email: normalizedEmail }, ...(phoneNumber ? [{ phoneNumber }] : [])],
     });
 
     if (userExists) {
-      if (userExists.email === email.toLowerCase()) {
+      if (userExists.email === normalizedEmail) {
         if (role === 'choreographer' && userExists.role === 'choreographer') {
           if (userExists.approvalStatus === 'pending') {
-            return NextResponse.json(
-              { error: 'A signup request with this email is already pending admin approval' },
-              { status: 400 }
-            );
+            return NextResponse.json({ error: 'A signup request with this email is already pending admin approval' }, { status: 400 });
           }
           if (userExists.approvalStatus === 'rejected') {
-            return NextResponse.json(
-              { error: 'This choreographer request was rejected. Please contact admin or use a different email.' },
-              { status: 400 }
-            );
+            return NextResponse.json({ error: 'This choreographer request was rejected. Please contact admin or use a different email.' }, { status: 400 });
           }
           if (userExists.approvalStatus === 'approved') {
-            return NextResponse.json(
-              { error: 'This choreographer account is already approved. Please sign in instead.' },
-              { status: 400 }
-            );
+            return NextResponse.json({ error: 'This choreographer account is already approved. Please sign in instead.' }, { status: 400 });
           }
         }
-        return NextResponse.json(
-          { error: 'Email already registered' },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: 'Email already registered' }, { status: 400 });
       }
+
       if (phoneNumber && userExists.phoneNumber === phoneNumber) {
-        return NextResponse.json(
-          { error: 'Phone number already registered' },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: 'Phone number already registered' }, { status: 400 });
       }
     }
 
@@ -86,8 +68,8 @@ export async function POST(request: NextRequest) {
 
     const newUser = await User.create({
       fullName,
-      email: email.toLowerCase(),
-      password, // Note: Should hash password in production
+      email: normalizedEmail,
+      password, // TODO: hash password
       dateOfBirth,
       phoneNumber,
       location: location ? String(location).trim() : '',
@@ -96,8 +78,6 @@ export async function POST(request: NextRequest) {
       certificatePhoto: isChoreographer ? certificatePhoto : '',
       approvalStatus: isChoreographer ? 'pending' : undefined,
     });
-
-    console.log('User registered in DB:', newUser.email);
 
     if (isChoreographer) {
       return NextResponse.json(
@@ -110,13 +90,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const token = jwt.sign(
-      { userId: newUser._id, email: newUser.email, role: newUser.role },
-      JWT_SECRET,
-      { expiresIn: '24h' }
-    );
+    const sessionUser = {
+      userId: newUser._id.toString(),
+      email: newUser.email,
+      role: newUser.role,
+    };
 
-    return NextResponse.json(
+    await establishSession(sessionUser);
+
+    const response = NextResponse.json(
       {
         success: true,
         user: {
@@ -125,15 +107,15 @@ export async function POST(request: NextRequest) {
           email: newUser.email,
           role: newUser.role,
         },
-        token,
       },
       { status: 201 }
     );
+
+    return withLegacyAuthCookie(response, issueLegacyAuthToken(sessionUser));
   } catch (error: any) {
     console.error('Signup error:', error);
-    return NextResponse.json(
-      { error: error.message || 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }
+
+

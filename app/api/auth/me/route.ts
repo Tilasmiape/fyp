@@ -1,44 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import jwt from 'jsonwebtoken';
 import { connectDB } from '@/lib/db';
+import { getValidatedSession, touchSessionIfNeeded } from '@/lib/auth/session';
 import User from '@/models/User';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-key-change-in-prod';
-
-interface AuthPayload {
-  userId: string;
-  email: string;
-  role: 'client' | 'choreographer' | 'super-admin';
-}
-
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
-    let token = request.cookies.get('authToken')?.value;
+    const { session, user: authUser } = await getValidatedSession();
 
-    // Fallback to Authorization header
-    if (!token) {
-      const authHeader = request.headers.get('Authorization');
-      if (authHeader?.startsWith('Bearer ')) {
-        token = authHeader.substring(7);
-      }
-    }
-
-    if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    let payload: AuthPayload;
-    try {
-      payload = jwt.verify(token, JWT_SECRET) as AuthPayload;
-    } catch {
+    if (!authUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     await connectDB();
-    const user = await User.findById(payload.userId).select('fullName email role status statusReason approvalStatus');
+    const user = await User.findById(authUser.userId).select('fullName email role status statusReason approvalStatus');
+
     if (!user) {
+      await session.destroy();
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
+
     if (user.role === 'choreographer') {
       if (user.approvalStatus === 'pending') {
         return NextResponse.json(
@@ -61,6 +41,7 @@ export async function GET(request: NextRequest) {
         );
       }
     }
+
     if (user.status === 'suspended' || user.status === 'deleted') {
       return NextResponse.json(
         {
@@ -71,6 +52,8 @@ export async function GET(request: NextRequest) {
         { status: 403 }
       );
     }
+
+    await touchSessionIfNeeded(session);
 
     return NextResponse.json(
       {
@@ -89,4 +72,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+
 

@@ -8,6 +8,13 @@ interface AccountReviewEmailInput {
   decision: ReviewDecision;
 }
 
+interface PasswordResetOtpEmailInput {
+  to: string;
+  fullName: string;
+  code: string;
+  expiresInMinutes: number;
+}
+
 // Create Gmail transporter
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -16,6 +23,9 @@ const transporter = nodemailer.createTransport({
     pass: process.env.GMAIL_APP_PASSWORD,
   },
 });
+
+const PLATFORM_FROM_EMAIL = process.env.GMAIL_USER || 'stepoutdancestudiohub@gmail.com';
+const PLATFORM_FROM_NAME = 'Step Out Studio Hub';
 
 export async function sendChoreographerReviewEmail({
   to,
@@ -56,7 +66,7 @@ export async function sendChoreographerReviewEmail({
     `;
 
     const mailOptions = {
-      from: process.env.GMAIL_USER,
+      from: `${PLATFORM_FROM_NAME} <${PLATFORM_FROM_EMAIL}>`,
       to,
       subject,
       html,
@@ -72,5 +82,47 @@ export async function sendChoreographerReviewEmail({
   } catch (error: any) {
     console.error('❌ Email sending failed:', error.message);
     return { sent: false, reason: error.message };
+  }
+}
+
+export async function sendPasswordResetOtpEmail({
+  to,
+  fullName,
+  code,
+  expiresInMinutes,
+}: PasswordResetOtpEmailInput): Promise<{ sent: boolean; reason?: string }> {
+  try {
+    const subject = 'Your Step Out verification code';
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f9fafb; border-radius: 8px;">
+        <h2 style="color: #1f2937; margin-bottom: 16px;">Hello ${fullName || 'there'},</h2>
+        <p style="color: #374151; line-height: 1.6; margin-bottom: 16px;">
+          Use the verification code below to continue account recovery:
+        </p>
+        <div style="font-size: 30px; font-weight: 700; letter-spacing: 8px; color: #111827; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 18px; text-align: center; margin: 14px 0 18px;">
+          ${code}
+        </div>
+        <p style="color: #374151; line-height: 1.6; margin-bottom: 10px;">
+          This code expires in ${expiresInMinutes} minutes.
+        </p>
+        <p style="color: #6b7280; font-size: 12px; margin-top: 24px; border-top: 1px solid #e5e7eb; padding-top: 16px;">
+          If you did not request this, you can safely ignore this email.<br/>
+          <strong>Step Out Studio Hub</strong>
+        </p>
+      </div>
+    `;
+
+    const info = await transporter.sendMail({
+      from: `${PLATFORM_FROM_NAME} <${PLATFORM_FROM_EMAIL}>`,
+      to,
+      subject,
+      html,
+    });
+
+    console.log('OTP email sent to:', to, 'messageId:', info.messageId);
+    return { sent: true };
+  } catch (error: any) {
+    console.error('OTP email send failed:', error?.message || error);
+    return { sent: false, reason: error?.message || 'Failed to send OTP email' };
   }
 }

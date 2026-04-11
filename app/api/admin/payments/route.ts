@@ -1,15 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 import { connectDB } from '@/lib/db';
+import { getValidatedSession } from '@/lib/auth/session';
 import Payout from '@/models/Payout';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-key-change-in-prod';
-
-interface AuthPayload {
-  userId: string;
-  email: string;
-  role: 'client' | 'choreographer' | 'super-admin';
-}
 
 export const runtime = 'nodejs';
 
@@ -19,26 +12,14 @@ export const runtime = 'nodejs';
  */
 export async function GET(request: NextRequest) {
   try {
-    const token = request.cookies.get('authToken')?.value;
-    if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    let payload: AuthPayload;
-    try {
-      payload = jwt.verify(token, JWT_SECRET) as AuthPayload;
-    } catch {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    if (payload.role !== 'super-admin') {
-      return NextResponse.json({ error: 'Only admins can view all payments' }, { status: 403 });
-    }
+    const { user } = await getValidatedSession('super-admin');
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     await connectDB();
 
-    // Get query parameters for filtering
     const url = new URL(request.url);
     const status = url.searchParams.get('status');
-    const filter: any = {};
+    const filter: Record<string, string> = {};
 
     if (status) {
       filter.status = status;
@@ -66,7 +47,7 @@ export async function GET(request: NextRequest) {
       {
         success: true,
         collection: 'payments',
-        database: process.env.MONGO_URI ? '✅ Connected' : '❌ Not connected',
+        database: process.env.MONGO_URI ? 'Connected' : 'Not connected',
         stats,
         payments,
       },
@@ -74,10 +55,7 @@ export async function GET(request: NextRequest) {
     );
   } catch (error: any) {
     console.error('Error fetching payments:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch payments', details: error?.message || error },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to fetch payments', details: error?.message || error }, { status: 500 });
   }
 }
 
@@ -85,28 +63,16 @@ export async function GET(request: NextRequest) {
  * POST /api/admin/payments/test
  * Create a test payment to verify MongoDB connection
  */
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   try {
-    const token = request.cookies.get('authToken')?.value;
-    if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    let payload: AuthPayload;
-    try {
-      payload = jwt.verify(token, JWT_SECRET) as AuthPayload;
-    } catch {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    if (payload.role !== 'super-admin') {
-      return NextResponse.json({ error: 'Only admins can create test payments' }, { status: 403 });
-    }
+    const { user } = await getValidatedSession('super-admin');
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     await connectDB();
 
-    // Create a test payment
     const testPayment = new Payout({
-      choreographerId: payload.userId,
-      reservationId: new (require('mongoose')).Types.ObjectId(),
+      choreographerId: user.userId,
+      reservationId: new mongoose.Types.ObjectId(),
       amount: 1000,
       currency: 'usd',
       status: 'pending',
@@ -125,16 +91,13 @@ export async function POST(request: NextRequest) {
         success: true,
         message: 'Test payment created in "payments" collection',
         payment: testPayment,
-        mongodbTip: 'View in MongoDB Compass: stepoutstudio → payments',
+        mongodbTip: 'View in MongoDB Compass: stepoutstudio -> payments',
       },
       { status: 201 }
     );
   } catch (error: any) {
     console.error('Error creating test payment:', error);
-    return NextResponse.json(
-      { error: 'Failed to create test payment', details: error?.message || error },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to create test payment', details: error?.message || error }, { status: 500 });
   }
 }
 
@@ -142,21 +105,10 @@ export async function POST(request: NextRequest) {
  * DELETE /api/admin/payments/test
  * Clear all test payments
  */
-export async function DELETE(request: NextRequest) {
+export async function DELETE(_request: NextRequest) {
   try {
-    const token = request.cookies.get('authToken')?.value;
-    if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    let payload: AuthPayload;
-    try {
-      payload = jwt.verify(token, JWT_SECRET) as AuthPayload;
-    } catch {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    if (payload.role !== 'super-admin') {
-      return NextResponse.json({ error: 'Only admins can delete payments' }, { status: 403 });
-    }
+    const { user } = await getValidatedSession('super-admin');
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     await connectDB();
 
@@ -171,9 +123,8 @@ export async function DELETE(request: NextRequest) {
     );
   } catch (error: any) {
     console.error('Error deleting payments:', error);
-    return NextResponse.json(
-      { error: 'Failed to delete payments', details: error?.message || error },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to delete payments', details: error?.message || error }, { status: 500 });
   }
 }
+
+

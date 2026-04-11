@@ -59,10 +59,6 @@ export default function SigninPage() {
 
         const result = await response.json();
         if (response.ok) {
-          if (result.token) {
-            document.cookie = `authToken=${result.token}; path=/; max-age=86400; SameSite=Lax`;
-            localStorage.setItem('authToken', result.token);
-          }
           setAttemptsRemaining(null);
           setLockedUntil(null);
           const userRole = result.user?.role || 'client';

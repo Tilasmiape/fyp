@@ -24,8 +24,8 @@ export default function LandingPage() {
     loadUser();
   }, []);
 
-  const handleLogout = () => {
-    document.cookie = 'authToken=; path=/; max-age=0';
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
     setHasUser(false);
     setUserName('Guest');
     router.push('/signin');

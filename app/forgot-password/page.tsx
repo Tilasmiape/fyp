@@ -36,15 +36,13 @@ export default function ForgotPasswordPage() {
 
   // Code step
   const [codeDigits, setCodeDigits] = useState(['', '', '', '', '', '']);
-  const [devCode, setDevCode] = useState<string | null>(null);
   const [codeError, setCodeError] = useState('');
   const [codeSending, setCodeSending] = useState(false);
   const [codeVerifying, setCodeVerifying] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
 
   // Password step
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [pwError, setPwError] = useState('');
   const [pwLoading, setPwLoading] = useState(false);
@@ -106,7 +104,6 @@ export default function ForgotPasswordPage() {
   const sendCode = async () => {
     setCodeSending(true);
     setCodeError('');
-    setDevCode(null);
     try {
       const res = await fetch('/api/auth/forgot-password/send-code', {
         method: 'POST',
@@ -115,7 +112,6 @@ export default function ForgotPasswordPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to send code');
-      if (data.devCode) setDevCode(data.devCode);
       setCodeDigits(['', '', '', '', '', '']);
       setStep('code');
       setResendCooldown(60);
@@ -158,11 +154,6 @@ export default function ForgotPasswordPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Verification failed');
-      // Sign in successful
-      if (data.token) {
-        document.cookie = `authToken=${data.token}; path=/; max-age=86400; SameSite=Lax`;
-        localStorage.setItem('authToken', data.token);
-      }
       setStep('done');
       // Redirect after 2s
       setTimeout(() => {
@@ -177,37 +168,29 @@ export default function ForgotPasswordPage() {
   };
 
   // ── Password reset flow ────────────────────────────────────────────────────
-  const handlePasswordReset = async () => {
+  const handlePasswordContinue = async () => {
     setPwError('');
-    if (newPassword.length < 6) { setPwError('Password must be at least 6 characters.'); return; }
-    if (newPassword !== confirmPassword) { setPwError('Passwords do not match.'); return; }
+    if (!currentPassword.trim()) { setPwError('Password is required.'); return; }
     setPwLoading(true);
     try {
-      const res = await fetch('/api/auth/forgot-password', {
+      const res = await fetch('/api/auth/signin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: account?.email, newPassword }),
+        body: JSON.stringify({ email: account?.email, password: currentPassword }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to reset password');
+      if (!res.ok) throw new Error(data.error || data.reason || 'Invalid password');
       setStep('done');
+      setTimeout(() => {
+        const role = data.user?.role || 'client';
+        router.push(role === 'super-admin' ? '/admin/home' : role === 'choreographer' ? '/choreographer/home' : '/client/home');
+      }, 1200);
     } catch (err: any) {
       setPwError(err.message);
     } finally {
       setPwLoading(false);
     }
   };
-
-  // Password strength
-  const pwStrength = (() => {
-    if (!newPassword) return null;
-    if (newPassword.length < 6) return { label: 'Too short', color: '#ef4444', w: '15%' };
-    const s = [/[A-Z]/.test(newPassword), /\d/.test(newPassword), /[^a-zA-Z0-9]/.test(newPassword)].filter(Boolean).length;
-    if (newPassword.length < 8) return { label: 'Weak', color: '#f59e0b', w: '35%' };
-    if (s === 0) return { label: 'Fair', color: '#f59e0b', w: '55%' };
-    if (s === 1) return { label: 'Good', color: '#10b981', w: '75%' };
-    return { label: 'Strong', color: '#059669', w: '100%' };
-  })();
 
   return (
     <div className="fp-root">
@@ -339,18 +322,6 @@ export default function ForgotPasswordPage() {
         }
         .fp-otp-input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.12); }
 
-        /* Dev code hint */
-        .fp-dev-hint {
-          background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px;
-          padding: 10px 14px; font-size: 12px; color: #92400e; margin-bottom: 16px;
-          display: flex; align-items: center; gap: 8px;
-        }
-
-        /* Strength bar */
-        .fp-str-track { height: 4px; background: #e5e7eb; border-radius: 999px; margin-top: 8px; overflow: hidden; }
-        .fp-str-fill { height: 100%; border-radius: 999px; transition: width 0.4s ease, background 0.4s ease; }
-        .fp-str-label { font-size: 10px; font-weight: 700; margin-top: 4px; }
-
         /* Buttons */
         .fp-btn {
           width: 100%; border: none; border-radius: 14px; background: #0d1736; color: #fff;
@@ -423,7 +394,7 @@ export default function ForgotPasswordPage() {
           {step !== 'done' && (
             <div className="fp-step-pills">
               {(['email','account','method', step === 'code' ? 'code' : 'password'] as const).map((s, i) => {
-                const labels = ['Email', 'Account', 'Method', step === 'code' ? 'Verify Code' : 'New Password'];
+                const labels = ['Email', 'Account', 'Method', step === 'code' ? 'Verify Code' : 'Password'];
                 const stepOrder: Step[] = ['email','account','method', step === 'code' ? 'code' : 'password'];
                 const currentIdx = stepOrder.indexOf(step);
                 return (
@@ -440,15 +411,13 @@ export default function ForgotPasswordPage() {
             <div className="fp-done">
               <div className="fp-done-check">✓</div>
               <div className="fp-done-title">
-                {method === 'code' ? 'Signed In!' : 'Password Updated!'}
+                Signed In!
               </div>
               <div className="fp-done-sub">
-                {method === 'code'
-                  ? 'You have been verified and signed in successfully.'
-                  : 'Your password has been reset. You can now sign in with your new password.'}
+                You have been verified and signed in successfully.
               </div>
               <button className="fp-btn" onClick={() => router.push('/signin')}>
-                {method === 'code' ? 'Go to Dashboard →' : 'Sign In Now →'}
+                Go to Dashboard
               </button>
             </div>
           )}
@@ -527,8 +496,8 @@ export default function ForgotPasswordPage() {
                   {method === 'password' && <div className="fp-radio-dot" />}
                 </div>
                 <div>
-                  <div className="fp-method-title">🔑 Reset password</div>
-                  <div className="fp-method-sub">Set a brand new password for your account</div>
+                  <div className="fp-method-title">🔑 Continue with password</div>
+                  <div className="fp-method-sub">Use your password to continue</div>
                 </div>
               </div>
 
@@ -546,12 +515,6 @@ export default function ForgotPasswordPage() {
               <p style={{ margin: '0 0 6px', fontSize: '14px', color: '#64748b', lineHeight: 1.6 }}>
                 We sent a 6-digit code to <strong style={{color:'#0f172a'}}>{account?.maskedEmail}</strong>. Enter it below to sign in.
               </p>
-
-              {devCode && (
-                <div className="fp-dev-hint">
-                  🧪 <strong>Dev mode:</strong> Your code is <strong style={{fontSize:'16px', letterSpacing:'3px'}}>{devCode}</strong>
-                </div>
-              )}
 
               {codeError && <div className="fp-error">✗ {codeError}</div>}
 
@@ -589,54 +552,30 @@ export default function ForgotPasswordPage() {
             </div>
           )}
 
-          {/* ── STEP 4b: New password ── */}
+          {/* ── STEP 4b: Continue with password ── */}
           {step === 'password' && (
             <div className="fp-body">
               <p style={{ margin: '0 0 18px', fontSize: '14px', color: '#64748b' }}>
-                Set a new password for <strong style={{color:'#0f172a'}}>{account?.fullName}</strong>.
+                Enter your current password for <strong style={{color:'#0f172a'}}>{account?.fullName}</strong> to continue.
               </p>
 
               {pwError && <div className="fp-error">✗ {pwError}</div>}
 
-              <label className="fp-label">New Password</label>
+              <label className="fp-label">Password</label>
               <div className="fp-field-wrap">
                 <input
                   className="fp-field" type={showPw ? 'text' : 'password'}
-                  placeholder="At least 6 characters" style={{paddingRight:'42px'}}
-                  value={newPassword} onChange={e => { setNewPassword(e.target.value); setPwError(''); }}
+                  placeholder="Enter your password" style={{paddingRight:'42px'}}
+                  value={currentPassword} onChange={e => { setCurrentPassword(e.target.value); setPwError(''); }}
+                  onKeyDown={e => e.key === 'Enter' && handlePasswordContinue()}
                   autoFocus
                 />
                 <button className="fp-eye" type="button" onClick={() => setShowPw(v => !v)}>{showPw ? '🙈' : '👁️'}</button>
               </div>
-              {pwStrength && (
-                <>
-                  <div className="fp-str-track">
-                    <div className="fp-str-fill" style={{width: pwStrength.w, background: pwStrength.color}} />
-                  </div>
-                  <div className="fp-str-label" style={{color: pwStrength.color}}>{pwStrength.label}</div>
-                </>
-              )}
 
               <div className="fp-sp" />
-
-              <label className="fp-label">Confirm Password</label>
-              <div className="fp-field-wrap">
-                <input
-                  className="fp-field" type={showPw ? 'text' : 'password'}
-                  placeholder="Re-enter password" style={{paddingRight:'42px'}}
-                  value={confirmPassword} onChange={e => { setConfirmPassword(e.target.value); setPwError(''); }}
-                  onKeyDown={e => e.key === 'Enter' && handlePasswordReset()}
-                />
-              </div>
-              {confirmPassword && (
-                <div style={{fontSize:'11px', marginTop:'4px', color: newPassword === confirmPassword ? '#10b981' : '#ef4444'}}>
-                  {newPassword === confirmPassword ? '✓ Passwords match' : '✗ Passwords do not match'}
-                </div>
-              )}
-
-              <div className="fp-sp" />
-              <button className="fp-btn" onClick={handlePasswordReset} disabled={pwLoading}>
-                {pwLoading ? '⏳ Saving...' : '🔒 Reset Password'}
+              <button className="fp-btn" onClick={handlePasswordContinue} disabled={pwLoading}>
+                {pwLoading ? '⏳ Checking...' : 'Continue →'}
               </button>
               <button className="fp-btn-ghost" onClick={() => setStep('method')}>← Back</button>
             </div>
