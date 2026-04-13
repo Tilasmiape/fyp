@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
 import { issueLegacyAuthToken } from '@/lib/auth/legacy-jwt';
 import { establishSession } from '@/lib/auth/session';
+import { SignupPayload, validateSignupPayload } from '@/lib/auth/signup-payload';
+import { consumeSignupVerificationToken, normalizeEmail } from '@/lib/auth/signup-verification';
 import User from '@/models/User';
 
 function withLegacyAuthCookie(response: NextResponse, token: string) {
@@ -18,26 +20,19 @@ function withLegacyAuthCookie(response: NextResponse, token: string) {
 export async function POST(request: NextRequest) {
   try {
     await connectDB();
-    const body = await request.json();
+    const body = (await request.json()) as SignupPayload & { verificationToken?: string };
     const { fullName, email, password, dateOfBirth, phoneNumber, role, location, certificatePhoto } = body;
 
-    if (role === 'super-admin') {
-      return NextResponse.json({ error: 'Cannot create super-admin via signup' }, { status: 403 });
+    const validationError = validateSignupPayload(body);
+    if (validationError) {
+      const status = validationError === 'Cannot create super-admin via signup' ? 403 : 400;
+      return NextResponse.json({ error: validationError }, { status });
     }
 
-    if (!fullName || !email || !password || !role) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    const normalizedEmail = normalizeEmail(email);
+    if (!body.verificationToken || !consumeSignupVerificationToken(normalizedEmail, body.verificationToken)) {
+      return NextResponse.json({ error: 'Email verification is required before signup.' }, { status: 403 });
     }
-
-    if (role === 'choreographer' && !certificatePhoto) {
-      return NextResponse.json({ error: 'Dance certificate photo is required for choreographers' }, { status: 400 });
-    }
-
-    if (role === 'choreographer' && (!Array.isArray(body.danceStyles) || body.danceStyles.length === 0)) {
-      return NextResponse.json({ error: 'At least one dance style is required for choreographers' }, { status: 400 });
-    }
-
-    const normalizedEmail = String(email).toLowerCase();
 
     const userExists = await User.findOne({
       $or: [{ email: normalizedEmail }, ...(phoneNumber ? [{ phoneNumber }] : [])],
@@ -70,6 +65,7 @@ export async function POST(request: NextRequest) {
       fullName,
       email: normalizedEmail,
       password, // TODO: hash password
+      gender: body.gender,
       dateOfBirth,
       phoneNumber,
       location: location ? String(location).trim() : '',

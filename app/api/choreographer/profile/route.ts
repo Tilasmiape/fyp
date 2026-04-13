@@ -6,7 +6,7 @@ import Availability from '@/models/Availability';
 import { resolveAvailability, validateAvailabilityTimes } from '@/lib/availability';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-key-change-in-prod';
-const MAX_VIDEOS = 3;
+const MAX_VIDEOS = 5;
 
 interface AuthPayload {
   userId: string;

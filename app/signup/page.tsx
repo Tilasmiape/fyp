@@ -37,6 +37,8 @@ export default function SignupPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [successMessage, setSuccessMessage] = useState('');
+  const [verificationStep, setVerificationStep] = useState(false);
+  const [verificationCode, setVerificationCode] = useState('');
 
   const availableDanceStyles = [
     'Bollywood',
@@ -145,6 +147,12 @@ export default function SignupPage() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
+    if (verificationStep && ['email', 'fullName', 'password', 'phoneNumber', 'role'].includes(name)) {
+      setVerificationStep(false);
+      setVerificationCode('');
+      setSuccessMessage('');
+      setErrors((prev) => ({ ...prev, verificationCode: '' }));
+    }
     setFormData(prev => ({ ...prev, [name]: value }));
 
     if (touched[name as keyof SignupData]) {
@@ -189,28 +197,73 @@ export default function SignupPage() {
     return newErrors;
   };
 
+  const buildSignupPayload = () => ({
+    role: formData.role,
+    fullName: formData.fullName.trim(),
+    email: formData.email.trim().toLowerCase(),
+    password: formData.password,
+    gender: formData.gender,
+    dateOfBirth: formData.dob,
+    phoneNumber: formData.phoneNumber.replace(/\D/g, ''),
+    location: formData.location.trim(),
+    danceStyles: formData.role === 'choreographer' ? formData.danceStyles : [],
+    certificatePhoto: formData.role === 'choreographer' ? formData.certificatePhoto : '',
+  });
+
+  const requestVerificationCode = async () => {
+    const response = await fetch('/api/auth/signup/send-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildSignupPayload()),
+    });
+
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result?.error || result?.message || 'Unable to send verification code.');
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newErrors = validateForm();
+    const newErrors = verificationStep ? {} : validateForm();
     setSuccessMessage('');
 
     if (Object.keys(newErrors).length === 0) {
       setLoading(true);
       try {
+        if (!verificationStep) {
+          await requestVerificationCode();
+          setVerificationStep(true);
+          setErrors({});
+          setSuccessMessage('A verification code has been sent to your email. Enter it below to complete registration.');
+          return;
+        }
+
+        if (!verificationCode.trim()) {
+          setErrors({ verificationCode: 'Verification code is required' });
+          return;
+        }
+
+        const verifyResponse = await fetch('/api/auth/signup/verify-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: formData.email.trim().toLowerCase(),
+            code: verificationCode.trim(),
+          }),
+        });
+        const verifyResult = await verifyResponse.json();
+        if (!verifyResponse.ok) {
+          setErrors({ verificationCode: verifyResult?.error || 'Invalid verification code.' });
+          return;
+        }
+
         const response = await fetch('/api/auth/signup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            role: formData.role,
-            fullName: formData.fullName.trim(),
-            email: formData.email.trim().toLowerCase(),
-            password: formData.password,
-            gender: formData.gender,
-            dateOfBirth: formData.dob,
-            phoneNumber: formData.phoneNumber.replace(/\D/g, ''),
-            location: formData.location.trim(),
-            danceStyles: formData.role === 'choreographer' ? formData.danceStyles : [],
-            certificatePhoto: formData.role === 'choreographer' ? formData.certificatePhoto : '',
+            ...buildSignupPayload(),
+            verificationToken: verifyResult.verificationToken,
           }),
         });
 
@@ -237,6 +290,19 @@ export default function SignupPage() {
       }
     } else {
       setErrors(newErrors);
+    }
+  };
+
+  const handleResendCode = async () => {
+    setLoading(true);
+    setErrors((prev) => ({ ...prev, verificationCode: '' }));
+    try {
+      await requestVerificationCode();
+      setSuccessMessage('A new verification code has been sent to your email.');
+    } catch (error: any) {
+      setErrors({ submit: error?.message || 'Unable to resend verification code.' });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -609,8 +675,30 @@ export default function SignupPage() {
               <form onSubmit={handleSubmit}>
                 <label className="label">I Am Joining As</label>
                 <div className="role-row" style={{ marginBottom: 12 }}>
-                  <button type="button" className={`role-btn ${formData.role === 'client' ? 'active' : ''}`} onClick={() => setFormData(prev => ({ ...prev, role: 'client' }))}>Client</button>
-                  <button type="button" className={`role-btn ${formData.role === 'choreographer' ? 'active' : ''}`} onClick={() => setFormData(prev => ({ ...prev, role: 'choreographer' }))}>Choreographer</button>
+                  <button
+                    type="button"
+                    className={`role-btn ${formData.role === 'client' ? 'active' : ''}`}
+                    onClick={() => {
+                      setFormData(prev => ({ ...prev, role: 'client' }));
+                      setVerificationStep(false);
+                      setVerificationCode('');
+                      setSuccessMessage('');
+                    }}
+                  >
+                    Client
+                  </button>
+                  <button
+                    type="button"
+                    className={`role-btn ${formData.role === 'choreographer' ? 'active' : ''}`}
+                    onClick={() => {
+                      setFormData(prev => ({ ...prev, role: 'choreographer' }));
+                      setVerificationStep(false);
+                      setVerificationCode('');
+                      setSuccessMessage('');
+                    }}
+                  >
+                    Choreographer
+                  </button>
                 </div>
 
                 <div className="form-grid">
@@ -689,8 +777,50 @@ export default function SignupPage() {
                   </>
                 )}
 
+                {verificationStep && (
+                  <div style={{ marginTop: 12 }}>
+                    <label className="label">Email Verification Code</label>
+                    <input
+                      className={`field ${errors.verificationCode ? 'error' : ''}`}
+                      type="text"
+                      name="verificationCode"
+                      value={verificationCode}
+                      onChange={(e) => {
+                        setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6));
+                        if (errors.verificationCode) {
+                          setErrors((prev) => ({ ...prev, verificationCode: '' }));
+                        }
+                      }}
+                      placeholder="Enter 6-digit code"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                    />
+                    {errors.verificationCode && <div className="error-text">{errors.verificationCode}</div>}
+                    <div style={{ marginTop: 8 }}>
+                      <button
+                        type="button"
+                        onClick={handleResendCode}
+                        disabled={loading}
+                        style={{
+                          border: 'none',
+                          background: 'transparent',
+                          color: '#4f46e5',
+                          fontWeight: 800,
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          padding: 0,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.7px',
+                        }}
+                      >
+                        Resend code
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <button type="submit" className="submit" disabled={loading}>
-                  {loading ? 'Creating Account...' : 'Register'}
+                  {loading ? 'Processing...' : verificationStep ? 'Verify & Register' : 'Send Verification Code'}
                 </button>
               </form>
 

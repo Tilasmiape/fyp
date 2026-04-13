@@ -48,7 +48,7 @@ interface DanceVideo {
   rejectionReason?: string;
 }
 
-const MAX_VIDEOS = 3;
+const MAX_VIDEOS = 5;
 const MAX_VIDEO_SIZE_MB = 3;
 
 function toDataUrl(file: File): Promise<string> {
