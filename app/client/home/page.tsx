@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DEFAULT_TIME_SLOTS } from '@/lib/availability';
+import MockPaymentModal from '@/components/MockPaymentModal';
 
 import { DateAvailability } from '@/lib/availability';
 
@@ -83,6 +84,7 @@ export default function ClientDashboard() {
   const [customDuration, setCustomDuration] = useState(60);
   const [notes, setNotes] = useState('');
   const [hasPresetSlots, setHasPresetSlots] = useState(false);
+  const [mockPaymentTarget, setMockPaymentTarget] = useState<any>(null);
   const reservedSet = useMemo(() => new Set(reservedTimes), [reservedTimes]);
   const timeSlots = useMemo(() => {
     if (!reserveFor || !reserveDate) return [];
@@ -132,16 +134,42 @@ export default function ClientDashboard() {
     if (parts.length !== 3 || parts.some(n => Number.isNaN(n))) return null;
     const [year, month, day] = parts;
 
+    // Handle HH:MM (24h) or HH:MM AM/PM format
     const timeParts = timeStr.trim().split(' ');
-    if (timeParts.length < 2) return null;
-    const [clock, meridiemRaw] = timeParts;
-    const meridiem = meridiemRaw.toUpperCase();
-    const [hh, mm] = clock.split(':').map(Number);
-    if ([hh, mm].some(n => Number.isNaN(n))) return null;
+    let hours = 0;
+    let mins = 0;
 
-    let hours = hh % 12;
-    if (meridiem === 'PM') hours += 12;
-    return new Date(year, month - 1, day, hours, mm, 0, 0);
+    if (timeParts.length === 2) {
+      // 12h format: "10:30 AM"
+      const [clock, meridiemRaw] = timeParts;
+      const meridiem = meridiemRaw.toUpperCase();
+      const [hh, mm] = clock.split(':').map(Number);
+      if ([hh, mm].some(n => Number.isNaN(n))) return null;
+      hours = hh % 12;
+      if (meridiem === 'PM') hours += 12;
+      mins = mm;
+    } else {
+      // 24h format: "14:30"
+      const [hh, mm] = timeStr.split(':').map(Number);
+      if ([hh, mm].some(n => Number.isNaN(n))) return null;
+      hours = hh;
+      mins = mm;
+    }
+    
+    return new Date(year, month - 1, day, hours, mins, 0, 0);
+  };
+
+  const getDiffInHours = () => {
+    if (!reserveDate) return Infinity;
+    const timeToUse = hasPresetSlots ? reserveTime : customTime;
+    if (!timeToUse) return Infinity;
+    
+    const sessionDate = parseSessionDateTime(reserveDate, timeToUse);
+    if (!sessionDate) return Infinity;
+    
+    const now = new Date();
+    const diffMs = sessionDate.getTime() - now.getTime();
+    return diffMs / (1000 * 60 * 60);
   };
   const splitReason = (message: string) => {
     const marker = 'Reason:';
@@ -188,7 +216,7 @@ export default function ClientDashboard() {
     setReserveOpen(true);
   };
 
-  const submitReservation = async () => {
+  const submitReservation = async (manualPayNow?: boolean) => {
     if (!reserveFor) return;
     if (!reserveDate) { setReserveError('Please select a date.'); return; }
     
@@ -228,6 +256,10 @@ export default function ClientDashboard() {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
+      const diff = getDiffInHours();
+      const needsImmediatePay = diff < 24;
+      const payNow = manualPayNow !== undefined ? manualPayNow : needsImmediatePay;
+
       const res = await fetch('/api/sessions', {
         method: 'POST',
         headers,
@@ -241,14 +273,31 @@ export default function ClientDashboard() {
           sessionCategory,
           participantCount: sessionCategory === 'group' ? participantCount : 1,
           notes: notes.trim(),
+          payNow, // Tell backend this is an immediate payment attempt
         }),
       });
       const data = await res.json();
       if (!res.ok || !data?.success) {
         throw new Error(data?.error || 'Failed to reserve');
       }
-      setReserveOpen(false);
-      alert('Reservation request submitted successfully!');
+
+      if (payNow) {
+        // Trigger immediate payment modal
+        setMockPaymentTarget({
+          id: data.sessionId,
+          total: (Math.round((reserveFor.pricePerSession * (sessionCategory === 'group' ? (reserveFor.groupSessionPriceMultiplier || 1.3) : 1) + 50) * 100) / 100),
+          choreographer: { name: reserveFor.name },
+          date: reserveDate,
+          time: timeString
+        });
+        setReserveOpen(false);
+      } else {
+        setReserveOpen(false);
+        const autoAccepted = hasPresetSlots;
+        alert(autoAccepted 
+          ? 'Slot Reserved! You can complete payment anytime from your Dashboard.' 
+          : 'Reservation request submitted! Waiting for choreographer approval.');
+      }
     } catch (err: any) {
       setReserveError(err.message || 'Failed to reserve');
     } finally {
@@ -1437,16 +1486,78 @@ export default function ClientDashboard() {
 
             {reserveError && <div className="error-text">{reserveError}</div>}
 
-            <button
-              className="btn primary"
-              style={{ width: '100%', marginTop: '16px' }}
-              onClick={submitReservation}
-              disabled={reserveLoading}
-            >
-              {reserveLoading ? 'Reserving...' : 'Finalize Reservation'}
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '16px' }}>
+              {getDiffInHours() < 24 ? (
+                /* URGENT CASE: Force Pay */
+                <button
+                  className="btn primary"
+                  style={{ width: '100%' }}
+                  onClick={() => submitReservation(true)}
+                  disabled={reserveLoading}
+                >
+                  {reserveLoading ? 'Processing...' : 'Pay & Book Now'}
+                </button>
+              ) : hasPresetSlots ? (
+                /* PRESET SLOT (>24h): Dual Option */
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    className="btn"
+                    style={{ flex: 1, background: '#f1f2f7', color: '#111827', border: '1px solid #e7e9f0' }}
+                    onClick={() => submitReservation(false)}
+                    disabled={reserveLoading}
+                  >
+                    Reserve Only
+                  </button>
+                  <button
+                    className="btn primary"
+                    style={{ flex: 1, background: '#f4b63a' }}
+                    onClick={() => submitReservation(true)}
+                    disabled={reserveLoading}
+                  >
+                    Pay & Book Now
+                  </button>
+                </div>
+              ) : (
+                /* CUSTOM TIME (>24h): Request Only */
+                <button
+                  className="btn primary"
+                  style={{ width: '100%' }}
+                  onClick={() => submitReservation(false)}
+                  disabled={reserveLoading}
+                >
+                  {reserveLoading ? 'Sending Request...' : 'Request Reservation'}
+                </button>
+              )}
+            </div>
+
+            {getDiffInHours() < 24 && (
+              <div style={{ fontSize: '10px', color: '#ef4444', textAlign: 'center', marginTop: '8px', fontWeight: 'bold' }}>
+                ⚠️ Sessions within 24 hours require immediate payment to secure.
+              </div>
+            )}
+            {hasPresetSlots && getDiffInHours() >= 24 && (
+              <div style={{ fontSize: '10px', color: '#059669', textAlign: 'center', marginTop: '8px' }}>
+                ✅ This slot is auto-accepted. Reserve now, pay later!
+              </div>
+            )}
           </div>
         </div>
+      )}
+
+      {mockPaymentTarget && (
+        <MockPaymentModal
+          sessionId={mockPaymentTarget.id}
+          amount={mockPaymentTarget.total}
+          choreographerName={mockPaymentTarget.choreographer?.name || 'Choreographer'}
+          sessionDate={mockPaymentTarget.date}
+          sessionTime={mockPaymentTarget.time}
+          onClose={() => setMockPaymentTarget(null)}
+          onSuccess={() => {
+            setMockPaymentTarget(null);
+            alert('Payment successful! Your session is now booked.');
+            fetchChoreographers(searchTerm, styleFilter, locationFilter);
+          }}
+        />
       )}
 
           {showNotificationPopup && combinedNotifications.length > 0 && (

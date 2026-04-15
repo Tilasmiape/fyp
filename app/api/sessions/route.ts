@@ -70,17 +70,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Enforce reservation rules
-    const today = new Date();
-    const sessionDate = new Date(date);
-    today.setHours(0,0,0,0);
-    sessionDate.setHours(0,0,0,0);
+    const now = new Date();
+    const sessionDateTime = new Date(`${date}T${time}`);
+    const diffInMs = sessionDateTime.getTime() - now.getTime();
+    const diffInHours = diffInMs / (1000 * 60 * 60);
 
-    // If trying to reserve (not pay now) for today, block
-    if (!payNow && sessionDate.getTime() === today.getTime()) {
-      return NextResponse.json({ error: 'Same-day reservations are not allowed. You must book and pay immediately for same-day sessions.' }, { status: 400 });
+    // If session is less than 24 hours away, must pay immediately
+    if (!payNow && diffInHours < 24) {
+      return NextResponse.json({ 
+        error: 'Urgent sessions (less than 24 hours away) require immediate payment. Please use "Pay & Book Now".' 
+      }, { status: 400 });
     }
-
-    // If payNow is true, allow same-day booking (handled in payment flow)
 
     await connectDB();
     const choreographer = await User.findOne({ _id: choreographerId, role: 'choreographer' }).select(
@@ -98,6 +98,8 @@ export async function POST(request: NextRequest) {
     const dateAvailability = choreographerAvailabilities.find((a: any) => a.date === date);
     const hasPresetSlots = dateAvailability && dateAvailability.timeSlots && dateAvailability.timeSlots.length > 0;
 
+    // Determine IF this is an auto-approval case (from preset availability)
+    let isAutoApproved = false;
     if (hasPresetSlots) {
       // Require selection from preset slots
       const allowedTimes = getAvailabilityForDate(choreographerAvailabilities as any || [], String(date));
@@ -110,6 +112,7 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+      isAutoApproved = true; // Preset slots are auto-approved
     } else {
       // Custom time - validate time format and duration
       if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(selectedTime)) {
@@ -121,6 +124,7 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+      isAutoApproved = false; // Custom times still need choreographer approval
     }
 
     const lockKey = `slot:${choreographerId}:${date}:${selectedTime}:${selectedDuration}`;
@@ -166,13 +170,13 @@ export async function POST(request: NextRequest) {
       pricePerSession,
       groupSessionMultiplier: multiplier,
       total,
-      status: 'pending',
+      status: isAutoApproved ? 'accepted' : 'pending',
       sessionStatus: 'reserved',
       mustPayBy: (() => {
         // Add a field for the latest payment time (5 hours before session)
-        const sessionDateTime = new Date(`${date}T${time}`);
-        sessionDateTime.setHours(sessionDateTime.getHours() - 5);
-        return sessionDateTime;
+        const sessionDateObj = new Date(sessionDateTime);
+        sessionDateObj.setHours(sessionDateObj.getHours() - 5);
+        return sessionDateObj;
       })(),
       choreographerEarnings: Math.round(total * 0.88 * 100) / 100,
       platformFee: Math.round(total * 0.12 * 100) / 100,
