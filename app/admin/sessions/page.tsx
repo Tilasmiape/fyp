@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AdminNavbar from '@/components/AdminNavbar';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface SessionStats {
   total: number;
@@ -129,6 +131,67 @@ export default function AdminSessionsPage() {
     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  const handleExportPDF = () => {
+    if (!sessions || sessions.length === 0) return;
+
+    const doc = new jsPDF();
+    const timestamp = new Date().toLocaleString();
+
+    // Title
+    doc.setFontSize(22);
+    doc.text('Session Performance Report', 14, 20);
+    
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Generated on: ${timestamp}`, 14, 28);
+
+    // Summary Section
+    doc.setFontSize(14);
+    doc.setTextColor(0);
+    doc.text('Executive Summary', 14, 40);
+    
+    if (stats) {
+      doc.setFontSize(10);
+      doc.text(`Total Sessions: ${stats.total}`, 14, 48);
+      doc.text(`Booked (Paid): ${stats.booked}`, 14, 54);
+      doc.text(`Reserved (Awaiting): ${stats.reserved}`, 14, 60);
+      doc.text(`Total Revenue: NPR ${stats.totalPaymentAmount.toLocaleString()}`, 80, 48);
+      doc.text(`Choreo. Earnings: NPR ${stats.totalChoreographerEarnings.toLocaleString()}`, 80, 54);
+      doc.text(`Platform Fees: NPR ${stats.totalPlatformFees.toLocaleString()}`, 80, 60);
+    }
+
+    // Sessions Table
+    const tableData = sessions.map(s => [
+      s.date ? s.date.split('T')[0] : '—',
+      s.client.name,
+      s.choreographer.name,
+      `NPR ${s.total.toLocaleString()}`,
+      s.paymentStatus,
+      s.sessionStatus,
+      s.attendance?.status || 'Unmarked'
+    ]);
+
+    autoTable(doc, {
+      startY: 70,
+      head: [['Date', 'Client', 'Choreographer', 'Total', 'Payment', 'Status', 'Attendance']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: [30, 58, 138], textColor: 255 },
+      styles: { fontSize: 8 },
+      alternateRowStyles: { fillColor: [249, 250, 251] }
+    });
+
+    // Footer
+    const pageCount = (doc as any).internal.getNumberOfPages();
+    for(let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.text(`Page ${i} of ${pageCount}`, doc.internal.pageSize.width / 2, doc.internal.pageSize.height - 10, { align: 'center' });
+    }
+
+    doc.save(`sessions-report-${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
   return (
     <div style={{ minHeight: '100vh', background: '#f6f7fb', fontFamily: "'Manrope', sans-serif" }}>
       <style>{`
@@ -240,6 +303,30 @@ export default function AdminSessionsPage() {
               <option value="cancelled">Cancelled</option>
             </select>
           </div>
+          <button 
+            className="btn-primary" 
+            style={{ 
+              marginLeft: 'auto', 
+              padding: '8px 16px', 
+              fontSize: '12px', 
+              background: '#1e3a8a', 
+              color: '#fff', 
+              borderRadius: '8px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              border: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+            onClick={handleExportPDF}
+            disabled={sessions.length === 0}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Export PDF Report
+          </button>
         </div>
 
         {loading ? (
