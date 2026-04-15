@@ -10,7 +10,7 @@ const pageRoleRules: Array<{ prefix: string; roles: SessionUser['role'][] }> = [
 
 const apiRoleRules: Array<{ prefix: string; roles: SessionUser['role'][] }> = [
   { prefix: '/api/admin', roles: ['super-admin'] },
-  { prefix: '/api/choreographer', roles: ['choreographer'] },
+  { prefix: '/api/choreographer/', roles: ['choreographer'] },
   { prefix: '/api/client', roles: ['client'] },
 ];
 
@@ -21,7 +21,7 @@ const PUBLIC_API_PREFIXES = [
   '/api/auth/logout',
   '/api/auth/forgot-password',
 ];
-const AUTH_REQUIRED_API_PREFIXES = ['/api/admin', '/api/choreographer', '/api/client', '/api/auth/me'];
+const AUTH_REQUIRED_API_PREFIXES = ['/api/admin', '/api/choreographer/', '/api/client', '/api/auth/me'];
 
 function applySecurityHeaders(response: NextResponse) {
   response.headers.set('X-Frame-Options', 'DENY');
@@ -77,7 +77,7 @@ function unauthorizedApi(message: string, status: number) {
   return applySecurityHeaders(NextResponse.json({ error: message }, { status }));
 }
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const isApi = pathname.startsWith('/api');
 
@@ -112,6 +112,8 @@ export async function proxy(request: NextRequest) {
 
   return applySecurityHeaders(NextResponse.next());
 }
+
+export default middleware;
 
 export const config = {
   matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
