@@ -7,6 +7,7 @@ import { getAvailabilityForDate } from '@/lib/availability';
 import Session from '@/models/Session';
 import Notification from '@/models/Notification';
 import { acquireSLock, acquireXLock, releaseSLock, releaseXLock } from '@/lib/locks';
+import { runBookingCleanup } from '@/lib/session-logic';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-key-change-in-prod';
 
@@ -173,10 +174,20 @@ export async function POST(request: NextRequest) {
       status: isAutoApproved ? 'accepted' : 'pending',
       sessionStatus: 'reserved',
       mustPayBy: (() => {
-        // Add a field for the latest payment time (5 hours before session)
-        const sessionDateObj = new Date(sessionDateTime);
-        sessionDateObj.setHours(sessionDateObj.getHours() - 5);
-        return sessionDateObj;
+        const now = new Date();
+        // 1. Deadline is 24 hours from the moment of booking
+        const bookingDeadline = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+        
+        // 2. Deadline must also be at least 24 hours before the session starts
+        const sessionPriorDeadline = new Date(new Date(sessionDateTime).getTime() - 24 * 60 * 60 * 1000);
+        
+        // Take the earlier of the two
+        let finalDeadline = bookingDeadline < sessionPriorDeadline ? bookingDeadline : sessionPriorDeadline;
+        
+        // If session is within 24 hours, payment is due immediately
+        if (finalDeadline < now) finalDeadline = now;
+        
+        return finalDeadline;
       })(),
       choreographerEarnings: Math.round(total * 0.88 * 100) / 100,
       platformFee: Math.round(total * 0.12 * 100) / 100,
@@ -228,6 +239,10 @@ export async function GET(request: NextRequest) {
     }
 
     await connectDB();
+    
+    // Periodically clean up expired sessions whenever someone views the list
+    await runBookingCleanup();
+
     const { searchParams } = new URL(request.url);
     const choreographerId = searchParams.get('choreographerId');
     const date = searchParams.get('date');
@@ -281,6 +296,7 @@ export async function GET(request: NextRequest) {
         sessionStatus: r.sessionStatus || sessionStatus,
         paymentStatus: r.paymentStatus || 'unpaid',
         total: r.total || 0,
+        mustPayBy: r.mustPayBy,
         choreographer: {
           id: r.choreographerId?._id || '',
           name: r.choreographerId?.fullName || '',

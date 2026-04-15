@@ -24,6 +24,8 @@ export interface ISession extends Document {
   paidAt?: Date;
   decisionReason?: string;
   decisionAt?: Date;
+  mustPayBy?: Date;
+  reminderSent?: boolean;
   // Payout fields
   payoutStatus: 'pending' | 'scheduled' | 'processing' | 'completed' | 'failed' | 'refunded';
   choreographerEarnings?: number; // 88% of total
@@ -59,6 +61,8 @@ const SessionSchema = new Schema<ISession>(
     paidAt: { type: Date },
     decisionReason: { type: String, default: '' },
     decisionAt: { type: Date },
+    mustPayBy: { type: Date },
+    reminderSent: { type: Boolean, default: false },
     // Payout fields - 88/12 split
     payoutStatus: {
       type: String,

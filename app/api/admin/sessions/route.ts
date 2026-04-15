@@ -3,10 +3,12 @@ import Session from '@/models/Session';
 import Attendance from '@/models/Attendance';
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
+import { runBookingCleanup } from '@/lib/session-logic';
 
 export async function GET(req: NextRequest) {
   try {
     await connectDB();
+    await runBookingCleanup();
 
     const authToken = req.cookies.get('authToken')?.value;
     if (!authToken) {

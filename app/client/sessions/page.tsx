@@ -15,6 +15,7 @@ interface ReservationItem {
   notes?: string;
   total: number;
   paymentStatus?: 'unpaid' | 'pending' | 'paid' | 'failed' | 'refunded';
+  mustPayBy?: string;
   choreographer: {
     id: string;
     name: string;
@@ -471,6 +472,11 @@ export default function ClientSessionsPage() {
                   <button className="btn-pay" onClick={() => startPayment(r.id)} disabled={paymentLoadingId === r.id}>
                     {paymentLoadingId === r.id ? 'Initializing...' : 'Pay Now'}
                   </button>
+                  {r.mustPayBy && (
+                    <div style={{ fontSize: '10px', color: '#ef4444', marginTop: '6px', fontWeight: '800' }}>
+                      Deadline: {new Date(r.mustPayBy).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  )}
                   {paymentError && paymentErrorId === r.id && (
                     <div className="meta" style={{ color: '#ef4444', marginTop: '6px', fontSize: '11px' }}>
                       {paymentError}
