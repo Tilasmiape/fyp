@@ -54,6 +54,7 @@ export async function POST(request: NextRequest) {
 
       session.paymentStatus = 'paid';
       session.status = 'confirmed';
+      session.sessionStatus = 'booked';
       session.paidAt = new Date();
       session.choreographerEarnings = choreographerEarnings;
       session.platformFee = platformFee;
@@ -105,6 +106,7 @@ export async function GET(request: NextRequest) {
 
             session.paymentStatus = 'paid';
             session.status = 'confirmed';
+            session.sessionStatus = 'booked';
             session.paidAt = new Date();
             session.choreographerEarnings = choreographerEarnings;
             session.platformFee = platformFee;

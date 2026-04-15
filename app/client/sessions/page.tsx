@@ -183,9 +183,15 @@ export default function ClientSessionsPage() {
   };
 
   const requested = reservations.filter(r => r.status === 'pending');
-  const upcoming = reservations.filter(
-    r => (r.status === 'accepted' || r.status === 'confirmed') && !isSessionPast(r.date, r.time)
+  
+  const booked = reservations.filter(
+    r => (r.status === 'confirmed' || r.paymentStatus === 'paid') && !isSessionPast(r.date, r.time)
   );
+
+  const reserved = reservations.filter(
+    r => r.status === 'accepted' && r.paymentStatus !== 'paid' && !isSessionPast(r.date, r.time)
+  );
+
   const history = reservations.filter(
     r => ((r.status === 'accepted' || r.status === 'confirmed') && isSessionPast(r.date, r.time)) || r.status === 'completed'
   );
@@ -419,45 +425,58 @@ export default function ClientSessionsPage() {
           ))
         )}
 
-        <div className="section-title">Upcoming Sessions</div>
-        {loading ? null : upcoming.length === 0 ? (
-          <div className="empty">No upcoming sessions yet.</div>
+        <div className="section-title">Confirmed Bookings</div>
+        {loading ? null : booked.length === 0 ? (
+          <div className="empty">No confirmed bookings yet.</div>
         ) : (
-          upcoming.map(r => (
+          booked.map(r => (
             <div key={r.id} className="card" style={{ marginBottom: '14px', borderLeft: '4px solid #10b981' }}>
               <div className="card-left">
                 <div className="avatar">{r.choreographer.profileImage && <img src={r.choreographer.profileImage} alt={r.choreographer.name} />}</div>
                 <div>
-                  <div className="label">{r.sessionCategory === 'group' ? `Group (${r.participantCount} people)` : 'Individual'} Session</div>
+                  <div className="label">Confirmed Session</div>
                   <div className="name">{r.choreographer.name}</div>
                   <div className="meta">{r.date} | {r.time}</div>
                 </div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div className="status" style={{ background: '#ecfdf5', color: '#047857' }}>Confirmed</div>
+                <div className="status" style={{ background: '#ecfdf5', color: '#047857' }}>Booked</div>
                 <div className="price" style={{ marginTop: '6px' }}>NPR {r.total.toLocaleString()}</div>
                 <button className="btn-chat" onClick={() => router.push(`/client/inbox?userId=${r.choreographer.id}`)}>Chat</button>
-                {r.paymentStatus === 'paid' && (
-                  <div className="payment-pill paid" style={{ marginTop: '8px' }}>Paid</div>
-                )}
-                {r.paymentStatus === 'pending' && (
-                  <div className="payment-pill pending" style={{ marginTop: '8px' }}>Payment Processing...</div>
-                )}
-                {r.paymentStatus === 'failed' && (
-                  <div className="payment-pill failed" style={{ marginTop: '8px' }}>Payment Failed</div>
-                )}
-                {(r.paymentStatus === 'unpaid' || !r.paymentStatus) && (
-                  <div style={{ marginTop: '10px' }}>
-                    <button className="btn-pay" onClick={() => startPayment(r.id)} disabled={paymentLoadingId === r.id}>
-                      {paymentLoadingId === r.id ? 'Initializing...' : 'Pay Now'}
-                    </button>
-                    {paymentError && paymentErrorId === r.id && (
-                      <div className="meta" style={{ color: '#ef4444', marginTop: '6px', fontSize: '11px' }}>
-                        {paymentError}
-                      </div>
-                    )}
-                  </div>
-                )}
+                <div className="payment-pill paid" style={{ marginTop: '8px' }}>Paid</div>
+              </div>
+            </div>
+          ))
+        )}
+
+        <div className="section-title">Reserved (Awaiting Payment)</div>
+        {loading ? null : reserved.length === 0 ? (
+          <div className="empty">No sessions awaiting payment.</div>
+        ) : (
+          reserved.map(r => (
+            <div key={r.id} className="card" style={{ marginBottom: '14px', borderLeft: '4px solid #3b82f6' }}>
+              <div className="card-left">
+                <div className="avatar">{r.choreographer.profileImage && <img src={r.choreographer.profileImage} alt={r.choreographer.name} />}</div>
+                <div>
+                  <div className="label">Reserved Slot</div>
+                  <div className="name">{r.choreographer.name}</div>
+                  <div className="meta">{r.date} | {r.time}</div>
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div className="status" style={{ background: '#eff6ff', color: '#3b82f6' }}>Reserved</div>
+                <div className="price" style={{ marginTop: '6px' }}>NPR {r.total.toLocaleString()}</div>
+                <button className="btn-chat" onClick={() => router.push(`/client/inbox?userId=${r.choreographer.id}`)}>Chat</button>
+                <div style={{ marginTop: '10px' }}>
+                  <button className="btn-pay" onClick={() => startPayment(r.id)} disabled={paymentLoadingId === r.id}>
+                    {paymentLoadingId === r.id ? 'Initializing...' : 'Pay Now'}
+                  </button>
+                  {paymentError && paymentErrorId === r.id && (
+                    <div className="meta" style={{ color: '#ef4444', marginTop: '6px', fontSize: '11px' }}>
+                      {paymentError}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           ))

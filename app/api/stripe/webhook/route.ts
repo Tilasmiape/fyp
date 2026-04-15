@@ -58,6 +58,7 @@ export async function POST(request: NextRequest) {
             $set: {
               paymentStatus: 'paid',
               status: 'confirmed',
+              sessionStatus: 'booked',
               stripePaymentIntentId: String(session.payment_intent || ''),
               paidAt: new Date(),
               // Record the split used by admin/choreographer analytics

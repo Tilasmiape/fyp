@@ -63,8 +63,8 @@ export default function AdminDashboard() {
     grossRevenue: 0,
     platformProfit: 0,
     choreographerPayout: 0,
-    paidSessions: 0,
-    pendingCollection: 0,
+    bookedSessions: 0,
+    reservedValue: 0,
   });
 
   const monthlySignups = useMemo(() => {
@@ -227,8 +227,8 @@ export default function AdminDashboard() {
         grossRevenue: Math.round(grossRevenue * 100) / 100,
         platformProfit: Math.round(platformProfit * 100) / 100,
         choreographerPayout: Math.round(choreographerPayout * 100) / 100,
-        paidSessions: paidSessions.length,
-        pendingCollection: Math.round(pendingCollection * 100) / 100,
+        bookedSessions: paidSessions.length,
+        reservedValue: Math.round(pendingCollection * 100) / 100,
       });
     } catch {}
   };
@@ -446,8 +446,8 @@ export default function AdminDashboard() {
           <div style={{ background: 'rgba(255, 255, 255, 0.95)', borderRadius: '16px', padding: '20px', boxShadow: '0 10px 30px rgba(0, 0, 0, 0.2)' }}>
             <p style={{ margin: 0, fontSize: '12px', color: '#6b7280', marginBottom: '8px', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700 }}>Profit Margin</p>
             <h3 style={{ margin: 0, fontSize: '30px', fontWeight: 800, color: '#1e3a8a' }}>{profitMargin}%</h3>
-            <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#6b7280' }}>Paid Sessions: {profitStats.paidSessions}</p>
-            <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#6b7280' }}>Pending Collection: NPR {profitStats.pendingCollection.toLocaleString()}</p>
+            <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#6b7280' }}>Booked Sessions: {profitStats.bookedSessions}</p>
+            <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#6b7280' }}>Reserved Value: NPR {profitStats.reservedValue.toLocaleString()}</p>
           </div>
         </div>
 

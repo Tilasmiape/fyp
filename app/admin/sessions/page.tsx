@@ -6,9 +6,8 @@ import AdminNavbar from '@/components/AdminNavbar';
 
 interface SessionStats {
   total: number;
-  paid: number;
-  pending: number;
-  unpaid: number;
+  booked: number;
+  reserved: number;
   failed: number;
   totalPaymentAmount: number;
   totalChoreographerEarnings: number;
@@ -35,6 +34,11 @@ interface Session {
   total: number;
   choreographerEarnings: number;
   platformFee: number;
+  sessionStatus: 'reserved' | 'booked';
+  attendance?: {
+    status: 'unmarked' | 'present' | 'absent';
+    score?: number | null;
+  } | null;
   paidAt?: string;
   createdAt: string;
 }
@@ -149,8 +153,8 @@ export default function AdminSessionsPage() {
         .alert { padding: 14px 16px; border-radius: 12px; margin-bottom: 16px; font-size: 13px; }
         .alert.error { background: #fef2f2; color: #b91c1c; border: 1px solid #fee2e2; }
         .table-container { background: #fff; border: 1px solid #e7e9f0; border-radius: 12px; overflow: hidden; }
-        .table-header { display: grid; grid-template-columns: 120px 120px 100px 60px 100px 100px 100px 80px 80px 80px; gap: 12px; padding: 16px; background: #f9fafb; border-bottom: 1px solid #e7e9f0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #6b7280; }
-        .table-row { display: grid; grid-template-columns: 120px 120px 100px 60px 100px 100px 100px 80px 80px 80px; gap: 12px; padding: 14px 16px; border-bottom: 1px solid #e7e9f0; align-items: center; font-size: 12px; }
+        .table-header { display: grid; grid-template-columns: 140px 140px 140px 80px 100px 100px 100px 100px 100px 100px 80px; gap: 12px; padding: 16px; background: #f9fafb; border-bottom: 1px solid #e7e9f0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #6b7280; }
+        .table-row { display: grid; grid-template-columns: 140px 140px 140px 80px 100px 100px 100px 100px 100px 100px 80px; gap: 12px; padding: 14px 16px; border-bottom: 1px solid #e7e9f0; align-items: center; font-size: 11px; }
         .table-row:last-child { border-bottom: none; }
         .table-row:hover { background: #f9fafb; }
         .name { font-weight: 700; }
@@ -177,16 +181,12 @@ export default function AdminSessionsPage() {
               <div className="stat-value">{stats.total}</div>
             </div>
             <div className="stat-card">
-              <div className="stat-label">Paid Sessions</div>
-              <div className="stat-value success">{stats.paid}</div>
+              <div className="stat-label">Booked Sessions</div>
+              <div className="stat-value success">{stats.booked}</div>
             </div>
             <div className="stat-card">
-              <div className="stat-label">Payment Pending</div>
-              <div className="stat-value warning">{stats.pending}</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">Unpaid Sessions</div>
-              <div className="stat-value info">{stats.unpaid}</div>
+              <div className="stat-label">Reserved Sessions</div>
+              <div className="stat-value info">{stats.reserved}</div>
             </div>
             <div className="stat-card">
               <div className="stat-label">Failed Payments</div>
@@ -251,14 +251,15 @@ export default function AdminSessionsPage() {
             <div className="table-header">
               <div>Client</div>
               <div>Choreographer</div>
-              <div>Date</div>
-              <div>Amount</div>
+              <div>Date & Time</div>
+              <div>Cost</div>
               <div>Payment</div>
-              <div>Payout</div>
+              <div>Status</div>
+              <div>Attendance</div>
+              <div>Score</div>
               <div>Earnings</div>
-              <div>Platform</div>
-              <div>Session</div>
-              <div>Paid At</div>
+              <div>Platform Fee</div>
+              <div>Action</div>
             </div>
             {sessions.map((session) => (
               <div key={session.id} className="table-row">
@@ -287,39 +288,39 @@ export default function AdminSessionsPage() {
                   <span
                     className="badge"
                     style={{
-                      background: getPayoutStatusColor(session.payoutStatus) + '20',
-                      color: getPayoutStatusColor(session.payoutStatus),
+                      background: session.sessionStatus === 'booked' ? '#dcfce7' : '#eff6ff',
+                      color: session.sessionStatus === 'booked' ? '#16a34a' : '#3b82f6',
                     }}
                   >
-                    {session.payoutStatus}
+                    {session.sessionStatus || 'reserved'}
                   </span>
+                  <div style={{ fontSize: '9px', marginTop: '2px', color: '#94a3b8' }}>{session.status}</div>
+                </div>
+                <div>
+                  <span
+                    className="badge"
+                    style={{
+                      background: session.attendance?.status === 'present' ? '#dcfce7' : session.attendance?.status === 'absent' ? '#fee2e2' : '#f3f4f6',
+                      color: session.attendance?.status === 'present' ? '#16a34a' : session.attendance?.status === 'absent' ? '#ef4444' : '#94a3b8',
+                    }}
+                  >
+                    {session.attendance?.status || 'Unmarked'}
+                  </span>
+                </div>
+                <div style={{ fontWeight: 800 }}>
+                  {session.attendance?.score !== undefined && session.attendance?.score !== null ? (
+                    <span style={{ color: '#0f172a' }}>{session.attendance.score} <small style={{ fontWeight: 400, color: '#94a3b8' }}>/ 10</small></span>
+                  ) : '—'}
                 </div>
                 <div style={{ fontWeight: 700, color: '#047857' }}>
                   NPR {(session.choreographerEarnings || 0).toLocaleString()}
                 </div>
                 <div style={{ fontWeight: 700, color: '#2563eb' }}>NPR {(session.platformFee || 0).toLocaleString()}</div>
                 <div>
-                  <span
-                    className="badge"
-                    style={{
-                      background:
-                        session.status === 'completed'
-                          ? '#d1fae520'
-                          : session.status === 'confirmed'
-                            ? '#fef3c720'
-                            : '#f3f4f620',
-                      color:
-                        session.status === 'completed'
-                          ? '#047857'
-                          : session.status === 'confirmed'
-                            ? '#b45309'
-                            : '#6b7280',
-                    }}
-                  >
-                    {session.status}
-                  </span>
+                  <button className="btn-secondary" style={{ padding: '4px 8px', fontSize: '9px' }} onClick={() => router.push(`/admin/sessions/${session.id}`)}>
+                    Details
+                  </button>
                 </div>
-                <div>{session.paidAt ? formatDate(session.paidAt) : '—'}</div>
               </div>
             ))}
           </div>

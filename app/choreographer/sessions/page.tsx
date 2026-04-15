@@ -132,6 +132,13 @@ export default function ChoreographerSessionsPage() {
       !confirmSessionPast(s.date, s.time)
   );
 
+  const reserved = sessions.filter(
+    (s) =>
+      s.status === 'accepted' &&
+      s.paymentStatus !== 'paid' &&
+      !confirmSessionPast(s.date, s.time)
+  );
+
   const completed = sessions.filter((s) => s.status === 'completed');
 
   return (
@@ -145,6 +152,7 @@ export default function ChoreographerSessionsPage() {
         .alert { padding: 14px 16px; border-radius: 12px; margin-bottom: 16px; font-size: 13px; }
         .alert.success { background: #ecfdf5; color: #047857; border: 1px solid #d1fae5; }
         .alert.warning { background: #fffbeb; color: #b45309; border: 1px solid #fef3c7; }
+        .alert.info { background: #eff6ff; color: #3b82f6; border: 1px solid #dbeafe; }
         .alert.error { background: #fef2f2; color: #b91c1c; border: 1px solid #fee2e2; }
         .btn { border: none; padding: 10px 14px; border-radius: 999px; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; cursor: pointer; transition: all 0.2s; }
         .btn-primary { background: #111827; color: #fff; }
@@ -165,6 +173,7 @@ export default function ChoreographerSessionsPage() {
         .price { font-weight: 800; font-size: 16px; margin-right: 16px; }
         .status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
         .status-paid { background: #d1fae5; color: #047857; }
+        .status-reserved { background: #eff6ff; color: #3b82f6; }
         .status-completed { background: #d1d5db; color: #374151; }
         .empty { color: #9ca3af; text-align: center; padding: 20px; }
       `}</style>
@@ -196,23 +205,23 @@ export default function ChoreographerSessionsPage() {
 
         {error && <div className="alert error">{error}</div>}
 
-        <div className="section-title">Upcoming Sessions (Ready to Complete)</div>
+        <div className="section-title">Upcoming (Booked & Ready)</div>
         {upcoming.length === 0 ? (
-          <div className="empty">No upcoming paid sessions</div>
+          <div className="empty">No upcoming booked sessions</div>
         ) : (
           upcoming.map((s) => (
             <div key={s.id} className="card">
               <div className="card-left">
                 <div className="avatar">{s.client.profileImage && <img src={s.client.profileImage} alt={s.client.name} />}</div>
                 <div className="card-info">
-                  <div className="label">Individual Session</div>
+                  <div className="label">Confirmed Session</div>
                   <div className="name">{s.client.name}</div>
                   <div className="meta">{s.date} at {s.time}</div>
                 </div>
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div className="price">NPR {s.total.toLocaleString()}</div>
-                <div className="status-badge status-paid" style={{ marginBottom: '8px' }}>Paid</div>
+                <div className="status-badge status-paid" style={{ marginBottom: '8px' }}>Booked</div>
                 <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginBottom: '8px' }}>
                   <button className="btn btn-secondary" onClick={() => router.push(`/client/${s.client.id}`)}>
                     View Client
@@ -228,6 +237,44 @@ export default function ChoreographerSessionsPage() {
                   title={!stripeConnected ? 'Connect Stripe first' : 'Mark session complete'}
                 >
                   {completingId === s.id ? 'Completing...' : 'Mark Complete'}
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+
+        <div className="section-title">Reserved (Awaiting Client Payment)</div>
+        {reserved.length === 0 ? (
+          <div className="empty">No reservations awaiting payment</div>
+        ) : (
+          reserved.map((s) => (
+            <div key={s.id} className="card">
+              <div className="card-left">
+                <div className="avatar">{s.client.profileImage && <img src={s.client.profileImage} alt={s.client.name} />}</div>
+                <div className="card-info">
+                  <div className="label">Reserved Slot</div>
+                  <div className="name">{s.client.name}</div>
+                  <div className="meta">{s.date} at {s.time}</div>
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div className="price">NPR {s.total.toLocaleString()}</div>
+                <div className="status-badge status-reserved" style={{ marginBottom: '8px' }}>Reserved</div>
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginBottom: '8px' }}>
+                  <button className="btn btn-secondary" onClick={() => router.push(`/client/${s.client.id}`)}>
+                    View Client
+                  </button>
+                  <button className="btn btn-secondary" onClick={() => router.push(`/choreographer/inbox?userId=${s.client.id}`)}>
+                    Chat
+                  </button>
+                </div>
+                <button
+                  className="btn btn-success"
+                  style={{ opacity: 0.5, cursor: 'not-allowed' }}
+                  disabled
+                  title="Session must be paid before completion"
+                >
+                  Waiting for Payment
                 </button>
               </div>
             </div>

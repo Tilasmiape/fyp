@@ -76,6 +76,7 @@ export async function POST(request: NextRequest) {
 
       reservation.paymentStatus = 'paid';
       reservation.status = 'confirmed';
+      reservation.sessionStatus = 'booked';
       reservation.paidAt = new Date();
       reservation.stripePaymentIntentId = `pi_mock_${Date.now()}`;
       reservation.stripeCheckoutSessionId = `cs_mock_${Date.now()}`;

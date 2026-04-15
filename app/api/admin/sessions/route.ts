@@ -1,5 +1,6 @@
 import { connectDB } from '@/lib/db';
 import Session from '@/models/Session';
+import Attendance from '@/models/Attendance';
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 
@@ -36,12 +37,19 @@ export async function GET(req: NextRequest) {
       .sort({ createdAt: -1 })
       .lean();
 
+    // Fetch corresponding attendances
+    const sessionIds = sessions.map(s => s._id);
+    const attendances = await Attendance.find({ sessionId: { $in: sessionIds } }).lean();
+    const attendanceMap = new Map();
+    attendances.forEach(a => {
+      attendanceMap.set(a.sessionId?.toString(), a);
+    });
+
     // Calculate stats
     const stats = {
       total: sessions.length,
-      paid: sessions.filter((s) => s.paymentStatus === 'paid').length,
-      pending: sessions.filter((s) => s.paymentStatus === 'pending').length,
-      unpaid: sessions.filter((s) => s.paymentStatus === 'unpaid').length,
+      booked: sessions.filter((s) => s.paymentStatus === 'paid').length,
+      reserved: sessions.filter((s) => s.paymentStatus === 'pending' || s.paymentStatus === 'unpaid').length,
       failed: sessions.filter((s) => s.paymentStatus === 'failed').length,
       totalPaymentAmount: sessions
         .filter((s) => s.paymentStatus === 'paid')
@@ -65,18 +73,23 @@ export async function GET(req: NextRequest) {
         paymentStatus: s.paymentStatus,
         payoutStatus: s.payoutStatus,
         client: {
-          id: s.clientId._id?.toString() || '',
-          name: s.clientId.fullName || 'Unknown',
-          email: s.clientId.email,
+          id: s.clientId?._id?.toString() || '',
+          name: s.clientId?.fullName || 'Unknown Client',
+          email: s.clientId?.email || 'N/A',
         },
         choreographer: {
-          id: s.choreographerId._id?.toString() || '',
-          name: s.choreographerId.fullName || 'Unknown',
-          email: s.choreographerId.email,
+          id: s.choreographerId?._id?.toString() || '',
+          name: s.choreographerId?.fullName || 'Unknown Choreographer',
+          email: s.choreographerId?.email || 'N/A',
         },
         total: s.total,
         choreographerEarnings: s.choreographerEarnings || 0,
         platformFee: s.platformFee || 0,
+        sessionStatus: s.sessionStatus || (s.status === 'confirmed' ? 'booked' : 'reserved'),
+        attendance: attendanceMap.get(s._id.toString()) ? {
+          status: attendanceMap.get(s._id.toString()).status,
+          score: attendanceMap.get(s._id.toString()).score
+        } : null,
         paidAt: s.paidAt,
         createdAt: s.createdAt,
       })),
