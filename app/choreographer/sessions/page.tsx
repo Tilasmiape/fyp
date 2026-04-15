@@ -28,6 +28,10 @@ export default function ChoreographerSessionsPage() {
   const [stripeConnected, setStripeConnected] = useState(false);
   const [stripeStatus, setStripeStatus] = useState('');
   const [completingId, setComplementingId] = useState<string | null>(null);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<Session | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState('');
 
   useEffect(() => {
     const loadUser = async () => {
@@ -93,6 +97,36 @@ export default function ChoreographerSessionsPage() {
     }
   };
 
+  const handleCancel = async () => {
+    if (!cancelTarget) return;
+    try {
+      setCancelling(true);
+      setCancelError('');
+      
+      const res = await fetch(`/api/sessions/${cancelTarget.id}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || 'Failed to cancel session');
+      
+      setShowCancelModal(false);
+      setCancelTarget(null);
+      
+      // Refresh list
+      const sRes = await fetch('/api/choreographer/sessions', { credentials: 'include' });
+      const sData = await sRes.json();
+      if (sRes.ok && sData?.sessions) {
+        setSessions(sData.sessions);
+      }
+    } catch (err: any) {
+      setCancelError(err.message || 'Failed to cancel');
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   const completeSession = async (sessionId: string) => {
     try {
       setComplementingId(sessionId);
@@ -140,6 +174,7 @@ export default function ChoreographerSessionsPage() {
   );
 
   const completed = sessions.filter((s) => s.status === 'completed');
+  const cancelled = sessions.filter((s) => s.status === 'cancelled');
 
   return (
     <div style={{ minHeight: '100vh', background: '#f6f7fb', fontFamily: "'Manrope', sans-serif" }}>
@@ -175,6 +210,7 @@ export default function ChoreographerSessionsPage() {
         .status-paid { background: #d1fae5; color: #047857; }
         .status-reserved { background: #eff6ff; color: #3b82f6; }
         .status-completed { background: #d1d5db; color: #374151; }
+        .status-cancelled { background: #fef2f2; color: #b91c1c; }
         .empty { color: #9ca3af; text-align: center; padding: 20px; }
       `}</style>
 
@@ -229,6 +265,16 @@ export default function ChoreographerSessionsPage() {
                   <button className="btn btn-secondary" onClick={() => router.push(`/choreographer/inbox?userId=${s.client.id}`)}>
                     Chat
                   </button>
+                  <button 
+                    className="btn btn-secondary" 
+                    style={{ borderColor: '#ef4444', color: '#ef4444' }} 
+                    onClick={() => {
+                      setCancelTarget(s);
+                      setShowCancelModal(true);
+                    }}
+                  >
+                    Cancel
+                  </button>
                 </div>
                 <button
                   className="btn btn-success"
@@ -266,6 +312,16 @@ export default function ChoreographerSessionsPage() {
                   </button>
                   <button className="btn btn-secondary" onClick={() => router.push(`/choreographer/inbox?userId=${s.client.id}`)}>
                     Chat
+                  </button>
+                  <button 
+                    className="btn btn-secondary" 
+                    style={{ borderColor: '#ef4444', color: '#ef4444' }} 
+                    onClick={() => {
+                      setCancelTarget(s);
+                      setShowCancelModal(true);
+                    }}
+                  >
+                    Cancel
                   </button>
                 </div>
                 <button
@@ -315,7 +371,61 @@ export default function ChoreographerSessionsPage() {
             </div>
           ))
         )}
-      </div>
+
+        <div className="section-title">Cancelled Sessions</div>
+        {cancelled.length === 0 ? (
+          <div className="empty">No cancelled sessions</div>
+        ) : (
+          cancelled.map((s) => (
+            <div key={s.id} className="card" style={{ opacity: 0.6 }}>
+              <div className="card-left">
+                <div className="avatar">{s.client.profileImage && <img src={s.client.profileImage} alt={s.client.name} />}</div>
+                <div className="card-info">
+                  <div className="label" style={{ color: '#ef4444' }}>Cancelled Session</div>
+                  <div className="name">{s.client.name}</div>
+                  <div className="meta">{s.date} at {s.time}</div>
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div className="price">NPR {s.total.toLocaleString()}</div>
+                <div className="status-badge status-cancelled">Cancelled</div>
+                {s.paymentStatus === 'partially-refunded' && s.choreographerEarnings ? (
+                  <div style={{ fontSize: '11px', color: '#b45309', fontWeight: 700, marginTop: '6px' }}>
+                    Penalty Earned: {s.choreographerEarnings.toLocaleString()} NPR
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '11px', color: '#b91c1c', fontWeight: 700, marginTop: '6px' }}>
+                    Refunded
+                  </div>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+        {showCancelModal && cancelTarget && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justify: 'center', zIndex: 100 }} onClick={(e) => e.target === e.currentTarget && setShowCancelModal(false)}>
+          <div style={{ width: 'min(520px, 92vw)', background: '#fff', borderRadius: '18px', padding: '24px', border: '1px solid #e7e9f0', boxShadow: '0 20px 40px rgba(15,23,42,0.2)' }}>
+            <div style={{ fontSize: '18px', fontWeight: 700, marginBottom: '12px' }}>Cancel Session</div>
+            <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '16px' }}>
+              Are you sure you want to cancel the session with <strong>{cancelTarget.client.name}</strong> on {cancelTarget.date}?
+            </div>
+            
+            <div style={{ background: '#fef2f2', border: '1px solid #fee2e2', padding: '12px', borderRadius: '12px', marginBottom: '16px', fontSize: '13px', color: '#b91c1c' }}>
+              <strong>Important:</strong> Cancelling as a choreographer will trigger a 100% refund for the client.
+            </div>
+
+            {cancelError && <div style={{ color: '#ef4444', fontSize: '12px', marginBottom: '12px' }}>{cancelError}</div>}
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button className="btn btn-primary" style={{ flex: 1, background: '#ef4444' }} onClick={handleCancel} disabled={cancelling}>
+                {cancelling ? 'Cancelling...' : 'Confirm Cancellation'}
+              </button>
+              <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowCancelModal(false)}>Keep Session</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
     </div>
   );
 }

@@ -16,7 +16,9 @@ export interface ISession extends Document {
   total: number;
   status: 'pending' | 'accepted' | 'confirmed' | 'completed' | 'rejected' | 'cancelled';
   sessionStatus: 'reserved' | 'booked' | 'cancelled';
-  paymentStatus: 'unpaid' | 'pending' | 'paid' | 'failed' | 'refunded';
+  paymentStatus: 'unpaid' | 'pending' | 'paid' | 'failed' | 'refunded' | 'partially-refunded';
+  refundAmount?: number;
+  cancelledBy?: 'client' | 'choreographer' | 'system';
   stripeCheckoutSessionId?: string;
   stripePaymentIntentId?: string;
   paymentCurrency?: string;
@@ -53,7 +55,9 @@ const SessionSchema = new Schema<ISession>(
     total: { type: Number, required: true },
     status: { type: String, enum: ['pending', 'accepted', 'confirmed', 'completed', 'rejected', 'cancelled'], default: 'pending' },
     sessionStatus: { type: String, enum: ['reserved', 'booked', 'cancelled'], default: 'reserved' },
-    paymentStatus: { type: String, enum: ['unpaid', 'pending', 'paid', 'failed', 'refunded'], default: 'unpaid' },
+    paymentStatus: { type: String, enum: ['unpaid', 'pending', 'paid', 'failed', 'refunded', 'partially-refunded'], default: 'unpaid' },
+    refundAmount: { type: Number, default: 0 },
+    cancelledBy: { type: String, enum: ['client', 'choreographer', 'system'] },
     stripeCheckoutSessionId: { type: String, default: '' },
     stripePaymentIntentId: { type: String, default: '' },
     paymentCurrency: { type: String, default: '' },

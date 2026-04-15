@@ -44,6 +44,11 @@ export default function ClientSessionsPage() {
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [paymentClientSecret, setPaymentClientSecret] = useState('');
   const [mockPaymentTarget, setMockPaymentTarget] = useState<ReservationItem | null>(null);
+  
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<ReservationItem | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState('');
 
   useEffect(() => {
     const loadUser = async () => {
@@ -244,6 +249,45 @@ export default function ClientSessionsPage() {
     }
   };
 
+  const openCancelModal = (reservation: ReservationItem) => {
+    setCancelTarget(reservation);
+    setCancelError('');
+    setShowCancelModal(true);
+  };
+
+  const handleCancel = async () => {
+    if (!cancelTarget) return;
+    try {
+      setCancelling(true);
+      setCancelError('');
+      
+      const res = await fetch(`/api/sessions/${cancelTarget.id}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || 'Failed to cancel session');
+      
+      setShowCancelModal(false);
+      setCancelTarget(null);
+      
+      // Refresh list
+      const token = localStorage.getItem('authToken');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const sRes = await fetch('/api/sessions', { headers });
+      const sData = await sRes.json();
+      if (sRes.ok && sData?.sessions) {
+        setReservations(sData.sessions);
+      }
+    } catch (err: any) {
+      setCancelError(err.message || 'Failed to cancel');
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   const startPayment = async (reservationId: string) => {
     try {
       setPaymentLoadingId(reservationId);
@@ -420,7 +464,10 @@ export default function ClientSessionsPage() {
               <div style={{ textAlign: 'right' }}>
                 <div className="status" style={{ background: '#fff7ed', color: '#c2410c' }}>Requested</div>
                 <div className="price" style={{ marginTop: '6px' }}>NPR {r.total.toLocaleString()}</div>
-                <button className="btn-chat" onClick={() => router.push(`/client/inbox?userId=${r.choreographer.id}`)}>Chat</button>
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '10px' }}>
+                  <button className="btn-chat" style={{ marginTop: 0 }} onClick={() => router.push(`/client/inbox?userId=${r.choreographer.id}`)}>Chat</button>
+                  <button className="btn-chat" style={{ marginTop: 0, borderColor: '#ef4444', color: '#ef4444' }} onClick={() => openCancelModal(r)}>Cancel</button>
+                </div>
               </div>
             </div>
           ))
@@ -444,7 +491,10 @@ export default function ClientSessionsPage() {
                 <div className="status" style={{ background: '#ecfdf5', color: '#047857' }}>Booked</div>
                 <div className="price" style={{ marginTop: '6px' }}>NPR {r.total.toLocaleString()}</div>
                 <button className="btn-chat" onClick={() => router.push(`/client/inbox?userId=${r.choreographer.id}`)}>Chat</button>
-                <div className="payment-pill paid" style={{ marginTop: '8px' }}>Paid</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end', marginTop: '8px' }}>
+                  <div className="payment-pill paid" style={{ marginTop: 0 }}>Paid</div>
+                  <button className="btn-chat" style={{ marginTop: 0, padding: '4px 10px', fontSize: '10px', borderColor: '#ef4444', color: '#ef4444' }} onClick={() => openCancelModal(r)}>Cancel</button>
+                </div>
               </div>
             </div>
           ))
@@ -467,7 +517,10 @@ export default function ClientSessionsPage() {
               <div style={{ textAlign: 'right' }}>
                 <div className="status" style={{ background: '#eff6ff', color: '#3b82f6' }}>Reserved</div>
                 <div className="price" style={{ marginTop: '6px' }}>NPR {r.total.toLocaleString()}</div>
-                <button className="btn-chat" onClick={() => router.push(`/client/inbox?userId=${r.choreographer.id}`)}>Chat</button>
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '10px' }}>
+                  <button className="btn-chat" style={{ marginTop: 0 }} onClick={() => router.push(`/client/inbox?userId=${r.choreographer.id}`)}>Chat</button>
+                  <button className="btn-chat" style={{ marginTop: 0, borderColor: '#ef4444', color: '#ef4444' }} onClick={() => openCancelModal(r)}>Cancel</button>
+                </div>
                 <div style={{ marginTop: '10px' }}>
                   <button className="btn-pay" onClick={() => startPayment(r.id)} disabled={paymentLoadingId === r.id}>
                     {paymentLoadingId === r.id ? 'Initializing...' : 'Pay Now'}
@@ -511,6 +564,34 @@ export default function ClientSessionsPage() {
             </div>
           ))
         )}
+
+        <div className="section-title">Cancelled Sessions</div>
+        {past.length === 0 ? (
+          <div className="empty">No cancelled sessions yet.</div>
+        ) : (
+          past.map(r => (
+            <div key={r.id} className="card" style={{ marginBottom: '14px', borderLeft: '4px solid #ef4444', opacity: 0.7 }}>
+              <div className="card-left">
+                <div className="avatar">{r.choreographer.profileImage && <img src={r.choreographer.profileImage} alt={r.choreographer.name} />}</div>
+                <div>
+                  <div className="label" style={{ color: '#ef4444' }}>Cancelled Session</div>
+                  <div className="name">{r.choreographer.name}</div>
+                  <div className="meta">{r.date} | {r.time}</div>
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div className="status" style={{ background: '#fef2f2', color: '#b91c1c' }}>Cancelled</div>
+                {r.paymentStatus === 'partially-refunded' ? (
+                  <div style={{ marginTop: '6px', fontSize: '11px', color: '#b45309', fontWeight: 700 }}>50% Refunded</div>
+                ) : r.paymentStatus === 'refunded' ? (
+                  <div style={{ marginTop: '6px', fontSize: '11px', color: '#047857', fontWeight: 700 }}>100% Refunded</div>
+                ) : (
+                   <div style={{ marginTop: '6px', fontSize: '11px', color: '#6b7280', fontWeight: 700 }}>No Charge</div>
+                )}
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
       {showFeedbackModal && feedbackTarget && (
@@ -523,6 +604,36 @@ export default function ClientSessionsPage() {
             <div className="modal-actions">
               <button className="modal-btn primary" onClick={submitFeedback} disabled={feedbackSaving}>{feedbackSaving ? 'Sending...' : 'Send Review'}</button>
               <button className="modal-btn ghost" onClick={() => setShowFeedbackModal(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCancelModal && cancelTarget && (
+        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowCancelModal(false)}>
+          <div className="modal-box">
+            <div className="modal-title">Cancel Session</div>
+            <div className="meta" style={{ marginBottom: '16px', fontSize: '14px' }}>
+              Are you sure you want to cancel your session with <strong>{cancelTarget.choreographer.name}</strong>?
+            </div>
+            
+            {cancelTarget.paymentStatus === 'paid' && (
+              <div className="alert warning" style={{ background: '#fffbeb', border: '1px solid #fef3c7', padding: '12px', borderRadius: '12px', marginBottom: '16px', fontSize: '13px', color: '#92400e' }}>
+                <strong>Refund Policy:</strong>
+                <ul style={{ margin: '8px 0 0 16px', padding: 0 }}>
+                  <li>More than 24h before session: 100% Refund.</li>
+                  <li>Within 24h of session: 50% Refund penalty applies.</li>
+                </ul>
+              </div>
+            )}
+
+            {cancelError && <div className="modal-error">{cancelError}</div>}
+
+            <div className="modal-actions">
+              <button className="modal-btn primary" style={{ background: '#ef4444' }} onClick={handleCancel} disabled={cancelling}>
+                {cancelling ? 'Cancelling...' : 'Confirm Cancellation'}
+              </button>
+              <button className="modal-btn ghost" onClick={() => setShowCancelModal(false)}>Keep Session</button>
             </div>
           </div>
         </div>

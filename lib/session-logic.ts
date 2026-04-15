@@ -11,13 +11,38 @@ export async function runBookingCleanup() {
     await connectDB();
     const now = new Date();
 
-    // 1. Process Auto-Cancellations
-    // Find sessions that are accepted/pending, unpaid, and past the mustPayBy deadline
-    const expiredSessions = await Session.find({
-      status: { $in: ['accepted', 'pending'] },
+    // 1. Process Auto-Cancellations and Reminders
+    // Find all sessions that are reserved and unpaid
+    const activeUnpaid = await Session.find({
+      sessionStatus: 'reserved',
       paymentStatus: 'unpaid',
-      mustPayBy: { $lt: now },
     });
+
+    const expiredSessions = [];
+    const pendingReminders = [];
+
+    for (const session of activeUnpaid) {
+      const [year, month, day] = session.date.split('-').map(Number);
+      const [clock, meridiem] = session.time.trim().split(' ');
+      const [hh, mm] = clock.split(':').map(Number);
+      let hours = hh;
+      if (meridiem) {
+        hours = hh % 12;
+        if (meridiem.toUpperCase() === 'PM') {
+          hours += 12;
+        }
+      }
+      const sessionStartTime = new Date(year, month - 1, day, hours, mm);
+      const timeDiffMs = sessionStartTime.getTime() - now.getTime();
+      const hoursRemaining = timeDiffMs / (1000 * 60 * 60);
+
+      if (hoursRemaining < 24) {
+        expiredSessions.push(session);
+      } else if (hoursRemaining < 36 && !session.reminderSent) {
+        // Send a reminder if within 12 hours of the deadline
+        pendingReminders.push(session);
+      }
+    }
 
     for (const session of expiredSessions) {
       session.status = 'cancelled';
@@ -29,7 +54,7 @@ export async function runBookingCleanup() {
         userId: session.clientId,
         type: 'session-auto-cancelled',
         title: 'Reservation Auto-Cancelled',
-        message: `Your reservation for ${session.date} at ${session.time} was cancelled because the 24-hour payment deadline passed.`,
+        message: `Your reservation for ${session.date} at ${session.time} was cancelled because it reached the 24-hour urgent payment deadline.`,
         sessionId: session._id,
       });
 
@@ -38,28 +63,18 @@ export async function runBookingCleanup() {
         userId: session.choreographerId,
         type: 'session-auto-cancelled',
         title: 'Session Cancelled (Unpaid)',
-        message: `The reservation for ${session.date} at ${session.time} has been auto-cancelled due to non-payment.`,
+        message: `The reservation for ${session.date} at ${session.time} has been auto-cancelled due to non-payment within 24 hours of the start time.`,
         sessionId: session._id,
       });
     }
-
-    // 2. Process Payment Reminders
-    // Find sessions that are accepted, unpaid, deadline is within 12 hours, and no reminder sent yet
-    const reminderWindow = new Date(now.getTime() + 12 * 60 * 60 * 1000);
-    const pendingReminders = await Session.find({
-      status: 'accepted',
-      paymentStatus: 'unpaid',
-      reminderSent: false,
-      mustPayBy: { $gt: now, $lt: reminderWindow },
-    });
 
     for (const session of pendingReminders) {
       // Notify Client
       await Notification.create({
         userId: session.clientId,
         type: 'payment-reminder',
-        title: 'Payment Reminder',
-        message: `Your session on ${session.date} at ${session.time} will be cancelled soon if not paid. You have less than 12 hours left before the deadline!`,
+        title: 'Urgent Payment Reminder',
+        message: `Your session on ${session.date} at ${session.time} will be auto-cancelled in less than 12 hours if it remains unpaid!`,
         sessionId: session._id,
       });
 
