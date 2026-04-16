@@ -39,16 +39,20 @@ interface AdminSession {
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'clients' | 'choreographers' | 'videos'>('clients');
+  const [activeTab, setActiveTab] = useState<'clients' | 'choreographers' | 'videos' | 'styles'>('clients');
   const [users, setUsers] = useState<User[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   
-  // Filter states
   const [searchTerm, setSearchTerm] = useState('');
   const [danceStyleFilter, setDanceStyleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended' | 'pending' | 'approved' | 'rejected'>('all');
+  
+  // Dance styles state
+  const [availableDanceStyles, setAvailableDanceStyles] = useState<string[]>([]);
+  const [newStyleName, setNewStyleName] = useState('');
+  const [isAddingStyle, setIsAddingStyle] = useState(false);
   
   const [stats, setStats] = useState<Stats>({
     totalUsers: 0,
@@ -151,24 +155,60 @@ export default function AdminDashboard() {
     return Math.round((profitStats.platformProfit / profitStats.grossRevenue) * 1000) / 10;
   }, [profitStats.grossRevenue, profitStats.platformProfit]);
 
-  const availableDanceStyles = [
-    'Bollywood',
-    'Hip Hop',
-    'Contemporary',
-    'Classical',
-    'Folk',
-    'Jazz',
-    'Salsa',
-    'Kathak',
-    'Bharatanatyam',
-    'Break Dance',
-    'Freestyle',
-  ];
-
   useEffect(() => {
     fetchUsers();
     fetchProfitAnalytics();
+    fetchDanceStyles();
   }, []);
+
+  const fetchDanceStyles = async () => {
+    try {
+      const res = await fetch('/api/dance-styles');
+      const data = await res.json();
+      if (data.success && data.styles) {
+        setAvailableDanceStyles(data.styles);
+      }
+    } catch (err) {
+      console.error('Failed to fetch dance styles', err);
+    }
+  };
+
+  const addDanceStyle = async () => {
+    if (!newStyleName.trim()) return;
+    setIsAddingStyle(true);
+    try {
+      const res = await fetch('/api/dance-styles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newStyleName.trim() }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNewStyleName('');
+        fetchDanceStyles();
+      } else {
+        alert(data.error || 'Failed to add dance style');
+      }
+    } catch (err: any) {
+      alert('Network error adding dance style');
+    } finally {
+      setIsAddingStyle(false);
+    }
+  };
+
+  const deleteDanceStyle = async (name: string) => {
+    if (!confirm(`Are you sure you want to delete the dance style "${name}"?`)) return;
+    try {
+      const res = await fetch('/api/dance-styles', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      if (res.ok) fetchDanceStyles();
+    } catch (err) {
+      alert('Network error deleting style');
+    }
+  };
 
   useEffect(() => {
     applyFilters();
@@ -519,7 +559,7 @@ export default function AdminDashboard() {
             marginBottom: '24px',
             borderBottom: '2px solid #e5e7eb',
           }}>
-            {(['clients', 'choreographers', 'videos'] as const).map(tab => (
+            {(['clients', 'choreographers', 'videos', 'styles'] as const).map(tab => (
               <button
                 key={tab}
                 onClick={() => {
@@ -545,277 +585,312 @@ export default function AdminDashboard() {
             ))}
           </div>
 
-          {/* Filters Panel */}
-          <div style={{
-            backgroundColor: '#f9fafb',
-            padding: '20px',
-            borderRadius: '12px',
-            marginBottom: '24px',
-            border: '1px solid #e5e7eb',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: '#374151' }}>Filters</h3>
-              <button
-                onClick={clearFilters}
-                style={{
-                  fontSize: '13px',
-                  color: '#6b7280',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  textDecoration: 'underline',
-                }}
-              >
-                Clear All
-              </button>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: activeTab === 'choreographers' ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)', gap: '16px' }}>
-              
-              {/* Search by Name */}
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>
-                  Search by Name
-                </label>
+          {activeTab === 'styles' ? (
+            <div style={{ padding: '20px', backgroundColor: '#f9fafb', borderRadius: '12px', border: '1px solid #e5e7eb' }}>
+              <div style={{ marginBottom: '24px', display: 'flex', gap: '12px', alignItems: 'center' }}>
                 <input
                   type="text"
-                  placeholder={`Search ${activeTab}...`}
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    outline: 'none',
-                  }}
+                  placeholder="New Dance Style Name..."
+                  value={newStyleName}
+                  onChange={e => setNewStyleName(e.target.value)}
+                  style={{ flex: 1, padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none' }}
                 />
+                <button
+                  onClick={addDanceStyle}
+                  disabled={isAddingStyle || !newStyleName.trim()}
+                  style={{ padding: '10px 20px', background: '#1e3a8a', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: isAddingStyle || !newStyleName.trim() ? 'not-allowed' : 'pointer', opacity: isAddingStyle || !newStyleName.trim() ? 0.7 : 1 }}
+                >
+                  {isAddingStyle ? 'Adding...' : 'Add Style'}
+                </button>
               </div>
-
-              {/* Dance Style Filter (Choreographers only) */}
-              {activeTab === 'choreographers' && (
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>
-                    Filter by Dance Style
-                  </label>
-                  <select
-                    value={danceStyleFilter}
-                    onChange={(e) => setDanceStyleFilter(e.target.value)}
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px' }}>
+                {availableDanceStyles.map(style => (
+                  <div key={style} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                    <span style={{ fontSize: '14px', fontWeight: 600, color: '#374151' }}>{style}</span>
+                    <button onClick={() => deleteDanceStyle(style)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>Delete</button>
+                  </div>
+                ))}
+              </div>
+              {availableDanceStyles.length === 0 && (
+                <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>No dance styles found.</div>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* Filters Panel */}
+              <div style={{
+                backgroundColor: '#f9fafb',
+                padding: '20px',
+                borderRadius: '12px',
+                marginBottom: '24px',
+                border: '1px solid #e5e7eb',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: '#374151' }}>Filters</h3>
+                  <button
+                    onClick={clearFilters}
                     style={{
-                      width: '100%',
-                      padding: '8px 12px',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      outline: 'none',
+                      fontSize: '13px',
+                      color: '#6b7280',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      textDecoration: 'underline',
                     }}
                   >
-                    <option value="">All Dance Styles</option>
-                    {availableDanceStyles.map(style => (
-                      <option key={style} value={style}>{style}</option>
-                    ))}
-                  </select>
+                    Clear All
+                  </button>
                 </div>
-              )}
 
-              {/* Status Filter */}
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>
-                  Filter by Status
-                </label>
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value as any)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    outline: 'none',
-                  }}
-                >
-                  <option value="all">All Status</option>
-                  <option value="active">Active</option>
-                  <option value="suspended">Suspended</option>
-                  {activeTab === 'choreographers' && (
-                    <>
-                      <option value="pending">Pending Approval</option>
-                      <option value="approved">Approved</option>
-                      <option value="rejected">Rejected</option>
-                    </>
-                  )}
-                </select>
-              </div>
-            </div>
-
-            <div style={{ marginTop: '12px', fontSize: '13px', color: '#6b7280' }}>
-              Showing {filteredUsers.length} of {users.filter(u => activeTab === 'clients' ? u.role === 'client' : u.role === 'choreographer').length} {activeTab}
-            </div>
-          </div>
-
-          {/* User Table */}
-          <div style={{ overflowX: 'auto' }}>
-            {loading ? (
-              <div style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
-                Loading users...
-              </div>
-            ) : (
-              <>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ backgroundColor: '#f3f4f6', borderBottom: '2px solid #e5e7eb' }}>
-                      <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#374151' }}>Name</th>
-                      <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#374151' }}>Email</th>
-                      {activeTab === 'choreographers' && (
-                        <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#374151' }}>Dance Styles</th>
-                      )}
-                      <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#374151' }}>Status</th>
-                      <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#374151' }}>Joined</th>
-                      <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: '13px', fontWeight: '600', color: '#374151' }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredUsers.map((user) => (
-                      <tr key={user._id} style={{ borderBottom: '1px solid #e5e7eb' }}>
-                        <td style={{ padding: '16px', fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{user.fullName}</td>
-                        <td style={{ padding: '16px', fontSize: '14px', color: '#6b7280' }}>{user.email}</td>
-                        {activeTab === 'choreographers' && (
-                          <td style={{ padding: '16px', fontSize: '12px', color: '#6b7280' }}>
-                            {user.danceStyles?.join(', ') || '-'}
-                          </td>
-                        )}
-                        <td style={{ padding: '16px' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            {user.role === 'choreographer' && user.approvalStatus && (
-                              <span style={{
-                                padding: '4px 12px',
-                                borderRadius: '12px',
-                                fontSize: '12px',
-                                fontWeight: '600',
-                                backgroundColor: user.approvalStatus === 'approved' ? '#d1fae5' : user.approvalStatus === 'rejected' ? '#fee2e2' : '#fef3c7',
-                                color: user.approvalStatus === 'approved' ? '#065f46' : user.approvalStatus === 'rejected' ? '#991b1b' : '#92400e',
-                                display: 'inline-block',
-                              }}>
-                                {user.approvalStatus}
-                              </span>
-                            )}
-                            <span style={{
-                              padding: '4px 12px',
-                              borderRadius: '12px',
-                              fontSize: '12px',
-                              fontWeight: '600',
-                              backgroundColor: user.status === 'suspended' ? '#fee2e2' : '#d1fae5',
-                              color: user.status === 'suspended' ? '#991b1b' : '#065f46',
-                              display: 'inline-block',
-                            }}>
-                              {user.status || 'active'}
-                            </span>
-                          </div>
-                        </td>
-                        <td style={{ padding: '16px', fontSize: '14px', color: '#6b7280' }}>
-                          {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '-'}
-                        </td>
-                        <td style={{ padding: '16px' }}>
-                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                            {user.role === 'choreographer' && user.approvalStatus === 'pending' && (
-                              <>
-                                <button
-                                  onClick={() => handleApproveChoreographer(user._id)}
-                                  style={{
-                                    padding: '6px 12px',
-                                    backgroundColor: '#10b981',
-                                    color: '#fff',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    fontSize: '12px',
-                                    fontWeight: '600',
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  Approve
-                                </button>
-                                <button
-                                  onClick={() => handleRejectChoreographer(user._id)}
-                                  style={{
-                                    padding: '6px 12px',
-                                    backgroundColor: '#ef4444',
-                                    color: '#fff',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    fontSize: '12px',
-                                    fontWeight: '600',
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  Reject
-                                </button>
-                              </>
-                            )}
-                            {user.status === 'active' ? (
-                              <button
-                                onClick={() => handleSuspendUser(user._id)}
-                                style={{
-                                  padding: '6px 12px',
-                                  backgroundColor: '#f59e0b',
-                                  color: '#fff',
-                                  border: 'none',
-                                  borderRadius: '6px',
-                                  fontSize: '12px',
-                                  fontWeight: '600',
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                Suspend
-                              </button>
-                            ) : user.status === 'suspended' ? (
-                              <button
-                                onClick={() => updateUser(user._id, { status: 'active', statusReason: '' })}
-                                style={{
-                                  padding: '6px 12px',
-                                  backgroundColor: '#10b981',
-                                  color: '#fff',
-                                  border: 'none',
-                                  borderRadius: '6px',
-                                  fontSize: '12px',
-                                  fontWeight: '600',
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                Restore
-                              </button>
-                            ) : null}
-                            <button
-                              onClick={() => handleDeleteUser(user._id)}
-                              style={{
-                                padding: '6px 12px',
-                                backgroundColor: '#6b7280',
-                                color: '#fff',
-                                border: 'none',
-                                borderRadius: '6px',
-                                fontSize: '12px',
-                                fontWeight: '600',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                
-                {filteredUsers.length === 0 && (
-                  <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
-                    No {activeTab} found matching your filters.
+                <div style={{ display: 'grid', gridTemplateColumns: activeTab === 'choreographers' ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)', gap: '16px' }}>
+                  
+                  {/* Search by Name */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>
+                      Search by Name
+                    </label>
+                    <input
+                      type="text"
+                      placeholder={`Search ${activeTab}...`}
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        outline: 'none',
+                      }}
+                    />
                   </div>
+
+                  {/* Dance Style Filter (Choreographers only) */}
+                  {activeTab === 'choreographers' && (
+                    <div>
+                      <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>
+                        Filter by Dance Style
+                      </label>
+                      <select
+                        value={danceStyleFilter}
+                        onChange={(e) => setDanceStyleFilter(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '8px',
+                          fontSize: '14px',
+                          outline: 'none',
+                        }}
+                      >
+                        <option value="">All Dance Styles</option>
+                        {availableDanceStyles.map(style => (
+                          <option key={style} value={style}>{style}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Status Filter */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>
+                      Filter by Status
+                    </label>
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value as any)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        outline: 'none',
+                      }}
+                    >
+                      <option value="all">All Status</option>
+                      <option value="active">Active</option>
+                      <option value="suspended">Suspended</option>
+                      {activeTab === 'choreographers' && (
+                        <>
+                          <option value="pending">Pending Approval</option>
+                          <option value="approved">Approved</option>
+                          <option value="rejected">Rejected</option>
+                        </>
+                      )}
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: '12px', fontSize: '13px', color: '#6b7280' }}>
+                  Showing {filteredUsers.length} of {users.filter(u => activeTab === 'clients' ? u.role === 'client' : u.role === 'choreographer').length} {activeTab}
+                </div>
+              </div>
+
+              {/* User Table */}
+              <div style={{ overflowX: 'auto' }}>
+                {loading ? (
+                  <div style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
+                    Loading users...
+                  </div>
+                ) : (
+                  <>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ backgroundColor: '#f3f4f6', borderBottom: '2px solid #e5e7eb' }}>
+                          <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#374151' }}>Name</th>
+                          <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#374151' }}>Email</th>
+                          {activeTab === 'choreographers' && (
+                            <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#374151' }}>Dance Styles</th>
+                          )}
+                          <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#374151' }}>Status</th>
+                          <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#374151' }}>Joined</th>
+                          <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: '13px', fontWeight: '600', color: '#374151' }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredUsers.map((user) => (
+                          <tr key={user._id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                            <td style={{ padding: '16px', fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{user.fullName}</td>
+                            <td style={{ padding: '16px', fontSize: '14px', color: '#6b7280' }}>{user.email}</td>
+                            {activeTab === 'choreographers' && (
+                              <td style={{ padding: '16px', fontSize: '12px', color: '#6b7280' }}>
+                                {user.danceStyles?.join(', ') || '-'}
+                              </td>
+                            )}
+                            <td style={{ padding: '16px' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                {user.role === 'choreographer' && user.approvalStatus && (
+                                  <span style={{
+                                    padding: '4px 12px',
+                                    borderRadius: '12px',
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    backgroundColor: user.approvalStatus === 'approved' ? '#d1fae5' : user.approvalStatus === 'rejected' ? '#fee2e2' : '#fef3c7',
+                                    color: user.approvalStatus === 'approved' ? '#065f46' : user.approvalStatus === 'rejected' ? '#991b1b' : '#92400e',
+                                    display: 'inline-block',
+                                  }}>
+                                    {user.approvalStatus}
+                                  </span>
+                                )}
+                                <span style={{
+                                  padding: '4px 12px',
+                                  borderRadius: '12px',
+                                  fontSize: '12px',
+                                  fontWeight: '600',
+                                  backgroundColor: user.status === 'suspended' ? '#fee2e2' : '#d1fae5',
+                                  color: user.status === 'suspended' ? '#991b1b' : '#065f46',
+                                  display: 'inline-block',
+                                }}>
+                                  {user.status || 'active'}
+                                </span>
+                              </div>
+                            </td>
+                            <td style={{ padding: '16px', fontSize: '14px', color: '#6b7280' }}>
+                              {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '-'}
+                            </td>
+                            <td style={{ padding: '16px' }}>
+                              <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                                {user.role === 'choreographer' && user.approvalStatus === 'pending' && (
+                                  <>
+                                    <button
+                                      onClick={() => handleApproveChoreographer(user._id)}
+                                      style={{
+                                        padding: '6px 12px',
+                                        backgroundColor: '#10b981',
+                                        color: '#fff',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        fontSize: '12px',
+                                        fontWeight: '600',
+                                        cursor: 'pointer',
+                                      }}
+                                    >
+                                      Approve
+                                    </button>
+                                    <button
+                                      onClick={() => handleRejectChoreographer(user._id)}
+                                      style={{
+                                        padding: '6px 12px',
+                                        backgroundColor: '#ef4444',
+                                        color: '#fff',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        fontSize: '12px',
+                                        fontWeight: '600',
+                                        cursor: 'pointer',
+                                      }}
+                                    >
+                                      Reject
+                                    </button>
+                                  </>
+                                )}
+                                {user.status === 'active' ? (
+                                  <button
+                                    onClick={() => handleSuspendUser(user._id)}
+                                    style={{
+                                      padding: '6px 12px',
+                                      backgroundColor: '#f59e0b',
+                                      color: '#fff',
+                                      border: 'none',
+                                      borderRadius: '6px',
+                                      fontSize: '12px',
+                                      fontWeight: '600',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    Suspend
+                                  </button>
+                                ) : user.status === 'suspended' ? (
+                                  <button
+                                    onClick={() => updateUser(user._id, { status: 'active', statusReason: '' })}
+                                    style={{
+                                      padding: '6px 12px',
+                                      backgroundColor: '#10b981',
+                                      color: '#fff',
+                                      border: 'none',
+                                      borderRadius: '6px',
+                                      fontSize: '12px',
+                                      fontWeight: '600',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    Restore
+                                  </button>
+                                ) : null}
+                                <button
+                                  onClick={() => handleDeleteUser(user._id)}
+                                  style={{
+                                    padding: '6px 12px',
+                                    backgroundColor: '#6b7280',
+                                    color: '#fff',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    
+                    {filteredUsers.length === 0 && (
+                      <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
+                        No {activeTab} found matching your filters.
+                      </div>
+                    )}
+                  </>
                 )}
-              </>
-            )}
-          </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

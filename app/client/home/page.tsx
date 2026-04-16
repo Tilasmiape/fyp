@@ -2,10 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { DEFAULT_TIME_SLOTS } from '@/lib/availability';
+import { DEFAULT_TIME_SLOTS, DateAvailability, getFutureAvailability } from '@/lib/availability';
 import MockPaymentModal from '@/components/MockPaymentModal';
-
-import { DateAvailability } from '@/lib/availability';
 
 interface Video {
   id: string;
@@ -88,10 +86,24 @@ export default function ClientDashboard() {
   const reservedSet = useMemo(() => new Set(reservedTimes), [reservedTimes]);
   const timeSlots = useMemo(() => {
     if (!reserveFor || !reserveDate) return [];
-    if (reserveFor.availabilityTimes && reserveFor.availabilityTimes.length > 0) {
-      const entry = reserveFor.availabilityTimes.find(a => a.date === reserveDate);
+    
+    // Use the helper to filter future slots (with 5h buffer)
+    const availabilityTimes = reserveFor.availabilityTimes || [];
+    const futureAvailability = getFutureAvailability(availabilityTimes, 5);
+    
+    if (futureAvailability.length > 0) {
+      const entry = futureAvailability.find(a => a.date === reserveDate);
       return entry ? entry.timeSlots : [];
     }
+    
+    // For default slots, we should also apply the 5h buffer logic if the date is today
+    const today = new Date().toISOString().split('T')[0];
+    if (reserveDate === today) {
+      return DEFAULT_TIME_SLOTS.filter(slot => 
+        getFutureAvailability([{ date: today, timeSlots: [slot] as any }], 5).length > 0
+      );
+    }
+    
     return DEFAULT_TIME_SLOTS;
   }, [reserveFor, reserveDate]);
   const combinedNotifications = useMemo(() => {
@@ -1367,8 +1379,7 @@ export default function ClientDashboard() {
                     💡 Choreographer's Preferred Dates
                   </label>
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
-                    {reserveFor.availabilityTimes
-                      .filter(dateEntry => new Date(dateEntry.date) >= new Date(new Date().setHours(0,0,0,0)))
+                    {getFutureAvailability(reserveFor.availabilityTimes || [], 5)
                       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
                       .map(dateEntry => (
                         <button

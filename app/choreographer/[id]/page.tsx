@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { DEFAULT_TIME_SLOTS, DateAvailability, getAvailabilityForDate } from '@/lib/availability';
+import { DEFAULT_TIME_SLOTS, DateAvailability, getAvailabilityForDate, getFutureAvailability } from '@/lib/availability';
 import { useParams, useRouter } from 'next/navigation';
 
 interface Video {
@@ -85,51 +85,10 @@ export default function ChoreographerProfilePage() {
   const [viewerId, setViewerId] = useState<string>('');
 
   const futureAvailability = useMemo(() => {
-    const availability = Array.isArray(profile?.availabilityTimes) ? profile.availabilityTimes : [];
-    if (!now) return [];
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
-
-    const toDateTime = (dateStr: string, timeStr: string) => {
-      const trimmed = timeStr.trim();
-      const match12 = trimmed.match(/^(0?[1-9]|1[0-2]):[0-5][0-9]\\s*(AM|PM)$/i);
-      const match24 = trimmed.match(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/);
-      if (!match12 && !match24) return null;
-      let hour = 0;
-      let minute = 0;
-      if (match12) {
-        hour = parseInt(match12[1], 10);
-        minute = parseInt(match12[2], 10);
-        const ampm = match12[3].toUpperCase();
-        if (ampm === 'PM' && hour < 12) hour += 12;
-        if (ampm === 'AM' && hour === 12) hour = 0;
-      } else if (match24) {
-        hour = parseInt(match24[1], 10);
-        minute = parseInt(match24[2], 10);
-      }
-      const dt = new Date(`${dateStr}T00:00:00`);
-      if (Number.isNaN(dt.getTime())) return null;
-      dt.setHours(hour, minute, 0, 0);
-      return dt;
-    };
-
-    return availability
-      .map((dateEntry) => {
-        const dateOnly = new Date(`${dateEntry.date}T00:00:00`);
-        if (Number.isNaN(dateOnly.getTime())) return null;
-        if (dateOnly < todayStart) return null;
-        if (dateOnly > todayStart) return dateEntry;
-        const nowRounded = new Date(now);
-        nowRounded.setSeconds(0, 0);
-        const futureSlots = (dateEntry.timeSlots || []).filter((slot) => {
-          const slotTime = toDateTime(dateEntry.date, slot.time);
-          return slotTime ? slotTime.getTime() >= nowRounded.getTime() : false;
-        });
-        if (futureSlots.length === 0) return null;
-        return { ...dateEntry, timeSlots: futureSlots };
-      })
-      .filter(Boolean) as DateAvailability[];
-  }, [profile?.availabilityTimes, now]);
+    const availabilityTimes = Array.isArray(profile?.availabilityTimes) ? profile.availabilityTimes : [];
+    // Filter with 5 hour buffer
+    return getFutureAvailability(availabilityTimes, 5);
+  }, [profile?.availabilityTimes]);
 
   useEffect(() => {
     setNow(new Date());
@@ -145,8 +104,21 @@ export default function ChoreographerProfilePage() {
 
   const timeSlots = useMemo(
     () => {
-      if (!futureAvailability || !reserveDate || !hasPresetSlots) return [];
-      return getAvailabilityForDate(futureAvailability, reserveDate);
+      if (!reserveDate) return [];
+      
+      if (hasPresetSlots) {
+        return getAvailabilityForDate(futureAvailability, reserveDate);
+      }
+      
+      // Handle DEFAULT_TIME_SLOTS with 5h buffer for today
+      const today = new Date().toISOString().split('T')[0];
+      if (reserveDate === today) {
+        return DEFAULT_TIME_SLOTS.filter(slot => 
+          getFutureAvailability([{ date: today, timeSlots: [slot] as any }], 5).length > 0
+        );
+      }
+      
+      return DEFAULT_TIME_SLOTS;
     },
     [futureAvailability, reserveDate, hasPresetSlots]
   );
@@ -759,9 +731,7 @@ export default function ChoreographerProfilePage() {
                 <div style={{ marginTop: '12px' }}>
                   <label className="reservation-modal-label" style={{ fontSize: '9px', color: '#f4b63a', marginBottom: '4px' }}>💡 Choreographer's Preferred Dates</label>
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
-                    {profile.availabilityTimes
-                      .filter(dateEntry => new Date(dateEntry.date) >= new Date(new Date().setHours(0, 0, 0, 0)))
-                      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                    {futureAvailability
                       .map(dateEntry => (
                         <button
                           key={dateEntry.date}

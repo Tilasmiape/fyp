@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useRef, useState } from 'react';
 import { DEFAULT_TIME_SLOTS, formatTimeSlot, normalizeAvailability, validateAvailabilityTimes, AvailabilitySlot, DateAvailability } from '@/lib/availability';
@@ -76,19 +76,18 @@ export default function EditProfileModal({ isOpen, onClose, availabilityOnly, ch
     setUploadError('');
   }, [isOpen, choreographerData]);
 
-  const availableDanceStyles = [
-    'Bollywood',
-    'Hip Hop',
-    'Contemporary',
-    'Classical',
-    'Folk',
-    'Jazz',
-    'Salsa',
-    'Kathak',
-    'Bharatanatyam',
-    'Break Dance',
-    'Freestyle',
-  ];
+  const [availableDanceStyles, setAvailableDanceStyles] = useState<string[]>([]);
+  
+  useEffect(() => {
+    fetch('/api/dance-styles')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.styles) {
+          setAvailableDanceStyles(data.styles);
+        }
+      })
+      .catch(err => console.error('Error fetching dance styles', err));
+  }, []);
 
   const handleDanceStyleToggle = (style: string) => {
     setSelectedStyles((prev) => (prev.includes(style) ? prev.filter((s) => s !== style) : [...prev, style]));

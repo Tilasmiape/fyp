@@ -135,3 +135,68 @@ export function validateAvailabilityTimes(input: unknown): { valid: DateAvailabi
   }
   return { valid, invalid };
 }
+export function toDateTime(dateStr: string, timeStr: string): Date | null {
+  if (!dateStr || !timeStr) return null;
+  const trimmed = timeStr.trim();
+  const match12 = trimmed.match(/^(0?[1-9]|1[0-2]):([0-5][0-9])\s*(AM|PM)$/i);
+  const match24 = trimmed.match(/^([0-1]?[0-9]|2[0-3]):([0-5][0-9])$/);
+  
+  if (!match12 && !match24) return null;
+  
+  let hour = 0;
+  let minute = 0;
+  
+  if (match12) {
+    hour = parseInt(match12[1], 10);
+    minute = parseInt(match12[2], 10);
+    const ampm = match12[3].toUpperCase();
+    if (ampm === 'PM' && hour < 12) hour += 12;
+    if (ampm === 'AM' && hour === 12) hour = 0;
+  } else if (match24) {
+    hour = parseInt(match24[1], 10);
+    minute = parseInt(match24[2], 10);
+  }
+  
+  // Use YYYY-MM-DDT00:00:00 format to avoid timezone issues when only date is provided
+  const dt = new Date(`${dateStr}T00:00:00`);
+  if (Number.isNaN(dt.getTime())) return null;
+  
+  dt.setHours(hour, minute, 0, 0);
+  return dt;
+}
+
+export function isFutureSlot(dateStr: string, timeStr: string, bufferHours: number = 0): boolean {
+  const slotDate = toDateTime(dateStr, timeStr);
+  if (!slotDate) return false;
+  
+  const now = new Date();
+  const compareDate = new Date(now.getTime() + bufferHours * 60 * 60 * 1000);
+  
+  return slotDate > compareDate;
+}
+
+export function getFutureAvailability(availability: DateAvailability[], bufferHours: number = 0): DateAvailability[] {
+  const result: DateAvailability[] = [];
+  const now = new Date();
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+
+  for (const dateEntry of availability) {
+    const dateOnly = new Date(`${dateEntry.date}T00:00:00`);
+    if (Number.isNaN(dateOnly.getTime())) continue;
+    if (dateOnly < todayStart) continue;
+
+    const futureSlots = dateEntry.timeSlots.filter(slot => 
+      isFutureSlot(dateEntry.date, slot.time, bufferHours)
+    );
+
+    if (futureSlots.length > 0) {
+      result.push({
+        ...dateEntry,
+        timeSlots: futureSlots
+      });
+    }
+  }
+  
+  return result.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+}

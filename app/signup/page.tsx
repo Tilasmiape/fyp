@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 
 interface SignupData {
@@ -40,20 +40,18 @@ export default function SignupPage() {
   const [verificationStep, setVerificationStep] = useState(false);
   const [verificationCode, setVerificationCode] = useState('');
 
-  const availableDanceStyles = [
-    'Bollywood',
-    'Hip Hop',
-    'Contemporary',
-    'Classical',
-    'Folk',
-    'Jazz',
-    'Salsa',
-    'Kathak',
-    'Bharatanatyam',
-    'Break Dance',
-    'Freestyle',
-  ];
-
+  const [availableDanceStyles, setAvailableDanceStyles] = useState<string[]>([]);
+  
+  useEffect(() => {
+    fetch('/api/dance-styles')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.styles) {
+          setAvailableDanceStyles(data.styles);
+        }
+      })
+      .catch(err => console.error('Error fetching dance styles', err));
+  }, []);
   const handleDanceStyleToggle = (style: string) => {
     setFormData((prev) => ({
       ...prev,

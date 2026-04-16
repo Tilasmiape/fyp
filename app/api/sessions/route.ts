@@ -72,7 +72,21 @@ export async function POST(request: NextRequest) {
 
     // Enforce reservation rules
     const now = new Date();
-    const sessionDateTime = new Date(`${date}T${time}`);
+
+    // Safely parse time string like "09:00", "9:00", or "09:00 AM" into standard "HH:mm"
+    let parsedTime = String(time);
+    let isPM = parsedTime.toLowerCase().includes('pm');
+    let isAM = parsedTime.toLowerCase().includes('am');
+    parsedTime = parsedTime.replace(/am|pm/ig, '').trim();
+    
+    let [hoursStr, minutesStr] = parsedTime.split(':');
+    let h = parseInt(hoursStr || '0', 10);
+    if (isPM && h < 12) h += 12;
+    if (isAM && h === 12) h = 0;
+    
+    const formattedTimeStr = `${String(h).padStart(2, '0')}:${(minutesStr || '00').padStart(2, '0')}:00`;
+    const sessionDateTime = new Date(`${date}T${formattedTimeStr}`);
+
     const diffInMs = sessionDateTime.getTime() - now.getTime();
     const diffInHours = diffInMs / (1000 * 60 * 60);
 
