@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import { connectDB } from '@/lib/db';
 import { getValidatedSession } from '@/lib/auth/session';
-import Payout from '@/models/Payout';
+import Payment from '@/models/Payment';
 
 export const runtime = 'nodejs';
 
@@ -25,19 +25,23 @@ export async function GET(request: NextRequest) {
       filter.status = status;
     }
 
-    const payments = await Payout.find(filter)
+    const payments = await Payment.find(filter)
+      .populate('sessionId', 'date time total status sessionStatus')
+      .populate('clientId', 'fullName email')
       .populate('choreographerId', 'fullName email')
-      .populate('reservationId', 'date time total')
+      .populate('payoutId', 'status payoutDate amount')
       .sort({ createdAt: -1 })
       .limit(100);
 
     const stats = {
-      total: await Payout.countDocuments(filter),
-      pending: await Payout.countDocuments({ ...filter, status: 'pending' }),
-      processing: await Payout.countDocuments({ ...filter, status: 'processing' }),
-      completed: await Payout.countDocuments({ ...filter, status: 'completed' }),
-      failed: await Payout.countDocuments({ ...filter, status: 'failed' }),
-      totalAmount: await Payout.aggregate([
+      total: await Payment.countDocuments(filter),
+      unpaid: await Payment.countDocuments({ ...filter, status: 'unpaid' }),
+      pending: await Payment.countDocuments({ ...filter, status: 'pending' }),
+      paid: await Payment.countDocuments({ ...filter, status: 'paid' }),
+      failed: await Payment.countDocuments({ ...filter, status: 'failed' }),
+      refunded: await Payment.countDocuments({ ...filter, status: 'refunded' }),
+      partiallyRefunded: await Payment.countDocuments({ ...filter, status: 'partially-refunded' }),
+      totalAmountInSmallestUnit: await Payment.aggregate([
         { $match: filter },
         { $group: { _id: null, total: { $sum: '$amount' } } },
       ]),
@@ -70,17 +74,19 @@ export async function POST(_request: NextRequest) {
 
     await connectDB();
 
-    const testPayment = new Payout({
+    const fakeSessionId = new mongoose.Types.ObjectId();
+    const testPayment = new Payment({
+      sessionId: fakeSessionId,
+      clientId: user.userId,
       choreographerId: user.userId,
-      reservationId: new mongoose.Types.ObjectId(),
-      amount: 1000,
+      amount: 100000,
       currency: 'usd',
       status: 'pending',
-      payoutDate: new Date(),
       metadata: {
-        choreographerName: 'Test Choreographer',
-        clientName: 'Test Client',
-        sessionDate: new Date().toISOString(),
+        date: new Date().toISOString().slice(0, 10),
+        time: '10:00 AM',
+        total: 1000,
+        sessionStatus: 'reserved',
       },
     });
 
@@ -112,7 +118,10 @@ export async function DELETE(_request: NextRequest) {
 
     await connectDB();
 
-    const result = await Payout.deleteMany({ 'metadata.clientName': 'Test Client' });
+    const result = await Payment.deleteMany({
+      'metadata.time': '10:00 AM',
+      'metadata.total': 1000,
+    });
 
     return NextResponse.json(
       {

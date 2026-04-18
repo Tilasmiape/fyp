@@ -269,7 +269,7 @@ export default function ClientDashboard() {
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
       const diff = getDiffInHours();
-      const needsImmediatePay = diff < 24;
+      const needsImmediatePay = hasPresetSlots && diff < 24;
       const payNow = manualPayNow !== undefined ? manualPayNow : needsImmediatePay;
 
       const res = await fetch('/api/sessions', {
@@ -293,7 +293,7 @@ export default function ClientDashboard() {
         throw new Error(data?.error || 'Failed to reserve');
       }
 
-      if (payNow) {
+      if (payNow && hasPresetSlots) {
         // Trigger immediate payment modal
         setMockPaymentTarget({
           id: data.sessionId,
@@ -1498,8 +1498,8 @@ export default function ClientDashboard() {
             {reserveError && <div className="error-text">{reserveError}</div>}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '16px' }}>
-              {getDiffInHours() < 24 ? (
-                /* URGENT CASE: Force Pay */
+              {getDiffInHours() < 24 && hasPresetSlots ? (
+                /* URGENT PRESET SLOT: Force Pay */
                 <button
                   className="btn primary"
                   style={{ width: '100%' }}
@@ -1507,6 +1507,16 @@ export default function ClientDashboard() {
                   disabled={reserveLoading}
                 >
                   {reserveLoading ? 'Processing...' : 'Pay & Book Now'}
+                </button>
+              ) : getDiffInHours() < 24 && !hasPresetSlots ? (
+                /* URGENT CUSTOM TIME: Request Approval */
+                <button
+                  className="btn primary"
+                  style={{ width: '100%' }}
+                  onClick={() => submitReservation(false)}
+                  disabled={reserveLoading}
+                >
+                  {reserveLoading ? 'Sending Request...' : 'Request Approval'}
                 </button>
               ) : hasPresetSlots ? (
                 /* PRESET SLOT (>24h): Dual Option */
@@ -1541,9 +1551,14 @@ export default function ClientDashboard() {
               )}
             </div>
 
-            {getDiffInHours() < 24 && (
+            {getDiffInHours() < 24 && hasPresetSlots && (
               <div style={{ fontSize: '10px', color: '#ef4444', textAlign: 'center', marginTop: '8px', fontWeight: 'bold' }}>
                 ⚠️ Sessions within 24 hours require immediate payment to secure.
+              </div>
+            )}
+            {getDiffInHours() < 24 && !hasPresetSlots && (
+              <div style={{ fontSize: '10px', color: '#f59e0b', textAlign: 'center', marginTop: '8px', fontWeight: 'bold' }}>
+                ⚠️ Custom time sessions need choreographer approval first, even within 24 hours.
               </div>
             )}
             {hasPresetSlots && getDiffInHours() >= 24 && (

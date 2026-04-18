@@ -3,6 +3,7 @@ import Session from '@/models/Session';
 import Notification from '@/models/Notification';
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
+import { upsertPaymentFromSession } from '@/lib/payment-sync';
 
 export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
@@ -90,6 +91,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     session.choreographerEarnings = finalChoreographerEarnings;
     session.platformFee = finalPlatformFee;
     await session.save();
+    await upsertPaymentFromSession(session as any, { refundAmount, status: session.paymentStatus });
 
     // Notify other party
     const recipientId = isClient ? session.choreographerId : session.clientId;

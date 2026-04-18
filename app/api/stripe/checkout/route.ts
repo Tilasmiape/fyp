@@ -4,6 +4,7 @@ import { connectDB } from '@/lib/db';
 import User, { IUser } from '@/models/User';
 import Session from '@/models/Session';
 import { requireStripe } from '@/lib/stripe';
+import { upsertPaymentFromSession } from '@/lib/payment-sync';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-key-change-in-prod';
 
@@ -86,6 +87,7 @@ export async function POST(request: NextRequest) {
       reservation.platformFee = platformFee;
       reservation.payoutStatus = 'scheduled';
       await reservation.save();
+      await upsertPaymentFromSession(reservation);
 
       return NextResponse.json(
         { success: true, mock: true, message: 'Payment simulated (Mock Mode).' },
@@ -146,6 +148,7 @@ export async function POST(request: NextRequest) {
     reservation.paymentCurrency = currency;
     reservation.paymentAmount = amountInSmallestUnit;
     await reservation.save();
+    await upsertPaymentFromSession(reservation);
 
     return NextResponse.json(
       { success: true, id: session.id, clientSecret: session.client_secret },

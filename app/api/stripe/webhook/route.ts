@@ -4,6 +4,7 @@ import { connectDB } from '@/lib/db';
 import Reservation from '@/models/Session';
 import { requireStripe } from '@/lib/stripe';
 import Payout from '@/models/Payout';
+import { upsertPaymentFromSession } from '@/lib/payment-sync';
 
 export const runtime = 'nodejs';
 
@@ -73,6 +74,12 @@ export async function POST(request: NextRequest) {
           .populate('clientId', 'fullName');
 
         console.log('[WEBHOOK] Reservation updated:', result?._id);
+        if (result) {
+          await upsertPaymentFromSession(result as any, {
+            amount: totalPaidInCents,
+            currency: session.currency || result.paymentCurrency || 'usd',
+          });
+        }
 
         // Create payout record for internal tracking
         // NOTE: The actual money transfer to the choreographer's bank is handled
@@ -102,6 +109,10 @@ export async function POST(request: NextRequest) {
               await Reservation.findByIdAndUpdate(reservationId, {
                 $set: { payoutId: payout._id },
               });
+              const refreshed = await Reservation.findById(reservationId);
+              if (refreshed) {
+                await upsertPaymentFromSession(refreshed as any, { payoutId: String(payout._id) });
+              }
               console.log(
                 `[WEBHOOK] Split recorded - Platform: ${platformFee} | Choreographer: ${choreographerEarnings}`
               );
@@ -123,6 +134,10 @@ export async function POST(request: NextRequest) {
           { _id: reservationId, paymentStatus: { $ne: 'paid' } },
           { $set: { paymentStatus: 'failed' } }
         );
+        const failedSession = await Reservation.findById(reservationId);
+        if (failedSession) {
+          await upsertPaymentFromSession(failedSession as any, { status: 'failed' });
+        }
         console.log('[WEBHOOK] Checkout expired, reservation marked failed:', reservationId);
       }
     }
@@ -137,6 +152,10 @@ export async function POST(request: NextRequest) {
           { _id: reservationId, paymentStatus: { $ne: 'paid' } },
           { $set: { paymentStatus: 'failed' } }
         );
+        const failedSession = await Reservation.findById(reservationId);
+        if (failedSession) {
+          await upsertPaymentFromSession(failedSession as any, { status: 'failed' });
+        }
         console.log('[WEBHOOK] Payment failed for reservation:', reservationId);
       }
     }

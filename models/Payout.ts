@@ -43,7 +43,7 @@ const PayoutSchema = new Schema<IPayout>(
       sessionDate: { type: String, default: '' },
     },
   },
-  { timestamps: true, collection: 'payments' }
+  { timestamps: true, collection: 'payouts' }
 );
 
 // Compound index for efficient querying

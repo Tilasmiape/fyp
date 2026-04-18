@@ -90,13 +90,6 @@ export async function POST(request: NextRequest) {
     const diffInMs = sessionDateTime.getTime() - now.getTime();
     const diffInHours = diffInMs / (1000 * 60 * 60);
 
-    // If session is less than 24 hours away, must pay immediately
-    if (!payNow && diffInHours < 24) {
-      return NextResponse.json({ 
-        error: 'Urgent sessions (less than 24 hours away) require immediate payment. Please use "Pay & Book Now".' 
-      }, { status: 400 });
-    }
-
     await connectDB();
     const choreographer = await User.findOne({ _id: choreographerId, role: 'choreographer' }).select(
       '_id pricePerSession groupSessionPriceMultiplier'
@@ -140,6 +133,18 @@ export async function POST(request: NextRequest) {
         );
       }
       isAutoApproved = false; // Custom times still need choreographer approval
+    }
+
+    // Urgent immediate payment is required only for auto-approved preset slots.
+    // Custom-time requests still require choreographer approval first.
+    if (isAutoApproved && !payNow && diffInHours < 24) {
+      return NextResponse.json(
+        {
+          error:
+            'Urgent preset slots (less than 24 hours away) require immediate payment. Please use "Pay & Book Now".',
+        },
+        { status: 400 }
+      );
     }
 
     const lockKey = `slot:${choreographerId}:${date}:${selectedTime}:${selectedDuration}`;

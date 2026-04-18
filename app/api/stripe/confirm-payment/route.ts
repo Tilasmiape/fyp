@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
 import Session from '@/models/Session';
 import { requireStripe } from '@/lib/stripe';
+import { upsertPaymentFromSession } from '@/lib/payment-sync';
 
 export const runtime = 'nodejs';
 
@@ -64,6 +65,7 @@ export async function POST(request: NextRequest) {
       }
       await session.save();
     }
+    await upsertPaymentFromSession(session as any);
 
     return NextResponse.json({ success: true, reservationId: dbSessionId }, { status: 200 });
   } catch (error: any) {
@@ -113,6 +115,7 @@ export async function GET(request: NextRequest) {
             session.payoutStatus = 'scheduled';
             await session.save();
           }
+          await upsertPaymentFromSession(session as any);
           return NextResponse.redirect(new URL('/client/sessions', request.url));
         }
       }

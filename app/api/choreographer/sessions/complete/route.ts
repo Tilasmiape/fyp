@@ -5,6 +5,7 @@ import Session from '@/models/Session';
 import Payout from '@/models/Payout';
 import User from '@/models/User';
 import { calculatePayoutSplit, getNextFriday } from '@/lib/stripe';
+import { upsertPaymentFromSession } from '@/lib/payment-sync';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-key-change-in-prod';
 
@@ -126,6 +127,9 @@ export async function POST(request: NextRequest) {
       },
       { new: true }
     );
+    if (updatedSession) {
+      await upsertPaymentFromSession(updatedSession as any, { payoutId: String(payout._id) });
+    }
 
     // Update choreographer's running total
     await User.updateOne(
